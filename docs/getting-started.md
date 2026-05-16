@@ -12,6 +12,18 @@ This guide walks you through installing Vault Bridges and setting up your first 
 
 Vault Bridges does not clone repos for you. It assumes the repo already exists on disk and manages the connection from there.
 
+### Optional: Claude Code Integration
+
+Vault Bridges can use [Claude Code](https://claude.ai/code) to automatically diagnose git errors and propose fixes. This is optional -- the plugin works without it -- but highly recommended for anyone who encounters merge conflicts or push rejections.
+
+**Prerequisite:** Claude Code must be installed and accessible from your terminal:
+
+```bash
+claude --version
+```
+
+If that command works, you're set. The plugin looks for the `claude` binary at `/opt/homebrew/bin/claude` by default. If yours is elsewhere, update the path in **Settings -> Vault Bridges -> Claude executable path**.
+
 ---
 
 ## Step 1: Install the Plugin
@@ -91,6 +103,8 @@ After adding the bridge:
 - Check the status bar at the bottom of the screen — you should see `⇅ 1 bridge ✓`
 
 If you see ❌ in the status bar, open **Settings → Vault Bridges** — the error message will be shown next to the bridge.
+
+If you see ❌ in the status bar and Claude Code integration is enabled, you may see a "Analyzing git error with Claude..." notice followed by a recovery modal. This is normal -- Claude will diagnose the error and propose concrete git commands to fix it. Review the plan carefully before approving, especially any steps marked [DESTRUCTIVE].
 
 ---
 

@@ -1,4 +1,4 @@
-import type { Bridge } from '../../src/types';
+import type { Bridge, GitFixPlan } from '../../src/types';
 
 const now = Date.now();
 
@@ -39,3 +39,30 @@ export const fixtureBridges: Bridge[] = [
 ];
 
 export const emptyBridges: Bridge[] = [];
+
+export const fixturePlan: GitFixPlan = {
+	summary:
+		'The remote has commits your local branch does not have. A rebase will replay your local commits on top of the remote state.',
+	warningMessage:
+		'If the rebase encounters conflicts, you will need to resolve them manually before pushing.',
+	steps: [
+		{
+			id: 'step-1',
+			description: 'Fetch the latest remote state',
+			command: 'git -C "/mock/repos/work-docs" fetch origin',
+			isDestructive: false,
+		},
+		{
+			id: 'step-2',
+			description: 'Rebase local commits onto remote main',
+			command: 'git -C "/mock/repos/work-docs" rebase origin/main',
+			isDestructive: false,
+		},
+		{
+			id: 'step-3',
+			description: 'Reset local branch to match remote (discards local commits)',
+			command: 'git -C "/mock/repos/work-docs" reset --hard origin/main',
+			isDestructive: true,
+		},
+	],
+};

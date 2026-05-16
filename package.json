@@ -7,6 +7,7 @@
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
+		"test:unit": "vitest run",
 		"typecheck": "tsc --noEmit",
 		"build:harness": "node test/harness/esbuild.mjs",
 		"pretest:screenshots": "node test/harness/esbuild.mjs",
@@ -15,7 +16,13 @@
 		"test:screenshots:update": "npx playwright test --update-snapshots",
 		"posttest:screenshots:update": "cp test/screenshots/snapshots/ui.spec.ts-snapshots/settings-bridges-chromium-darwin.png docs/screenshot-settings.png && cp test/screenshots/snapshots/ui.spec.ts-snapshots/settings-empty-chromium-darwin.png docs/screenshot-empty.png && cp test/screenshots/snapshots/ui.spec.ts-snapshots/add-bridge-modal-chromium-darwin.png docs/screenshot-add-bridge.png && cp test/screenshots/snapshots/ui.spec.ts-snapshots/error-state-chromium-darwin.png docs/screenshot-error.png"
 	},
-	"keywords": ["obsidian", "plugin", "git", "symlink", "sync"],
+	"keywords": [
+		"obsidian",
+		"plugin",
+		"git",
+		"symlink",
+		"sync"
+	],
 	"author": {
 		"name": "Rick Bowman",
 		"url": "https://github.com/richardbowman"
@@ -31,6 +38,7 @@
 		"esbuild": "^0.19.8",
 		"obsidian": "^1.4.16",
 		"tslib": "^2.6.2",
-		"typescript": "^5.3.3"
+		"typescript": "^5.3.3",
+		"vitest": "^4.1.6"
 	}
 }

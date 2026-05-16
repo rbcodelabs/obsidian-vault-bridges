@@ -68,7 +68,11 @@ export class ClaudeGitSession {
 		const warningMessage = warningMatch ? warningMatch[1].trim() : undefined;
 
 		// Extract STEPS
-		const stepsSection = text.match(/^STEPS:\s*\n([\s\S]+?)(?:\n\n|$)/m);
+		// Note: the 'm' flag is needed so '^STEPS:' can match mid-string, but it
+		// also makes '$' match end-of-line rather than end-of-input. Use '\n\n'
+		// or the unambiguous end-of-input anchor '\Z' equivalent via a look-ahead
+		// for zero-or-more newlines followed by end-of-input.
+		const stepsSection = text.match(/^STEPS:\s*\n([\s\S]+?)(?=\n\n|$(?!\n))/m);
 		const steps: GitFixStep[] = [];
 
 		if (stepsSection) {

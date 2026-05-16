@@ -153,6 +153,30 @@ vault/
 
 ---
 
+## Plugin Settings
+
+The following global settings are available in **Settings -> Vault Bridges**.
+
+### Sync on startup
+
+When enabled, all bridges with **Auto sync on startup** turned on are pulled automatically each time Obsidian opens. Disable this to manage sync entirely by hand.
+
+### Enable Claude error recovery (`claudeEnabled`)
+
+When enabled, the plugin invokes Claude Code to analyze any git error that occurs during a pull or push. Claude produces a structured fix plan (diagnosis + proposed commands) which is shown in a recovery modal for your review before anything is run. Auth and network errors bypass Claude and show a targeted hint instead.
+
+Default: `true`
+
+### Claude executable path (`claudePath`)
+
+The full filesystem path to the `claude` binary. The plugin calls this executable directly when error recovery is triggered.
+
+Default: `/opt/homebrew/bin/claude`
+
+If Claude Code is installed elsewhere (e.g. via a different package manager or a custom path), update this field to match the output of `which claude` in your terminal.
+
+---
+
 ## Coexistence with Obsidian Git
 
 If your vault is itself a Git repo managed by [Obsidian Git](https://github.com/Vinzent03/obsidian-git), add your bridge destination paths to the vault's `.gitignore`. This prevents Obsidian Git from staging and committing the copied files, which would double-track content that is already versioned in its own repo.

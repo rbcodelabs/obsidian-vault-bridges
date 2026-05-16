@@ -4,6 +4,32 @@ Solutions for common problems with Vault Bridges.
 
 ---
 
+## Claude Error Recovery
+
+When Claude Code integration is enabled, the plugin automatically tries to diagnose and fix git errors. Here's how it works and what to do when it doesn't.
+
+### The recovery modal appeared -- what do I do?
+
+Review the **Diagnosis** paragraph to understand what went wrong. Check each proposed step:
+
+- **[SAFE]** steps are read-only or low-risk operations (fetch, rebase onto a clean branch)
+- **[DESTRUCTIVE]** steps can lose data -- read them carefully before approving
+
+If you see a yellow warning box, pay attention: it means at least one step could overwrite commits or edits you care about. If you're unsure, click **Reject** and resolve the issue manually.
+
+### Claude isn't appearing after an error
+
+Check:
+1. **Settings -> Vault Bridges -> Enable Claude error recovery** is toggled on
+2. The **Claude executable path** is correct -- open a terminal and run that exact path to verify it works
+3. Auth and network errors bypass Claude intentionally (a targeted hint is shown instead)
+
+### I want to disable Claude recovery
+
+Toggle off **Enable Claude error recovery** in **Settings -> Vault Bridges**. The plugin will fall back to showing a plain error notice.
+
+---
+
 ## Bridge shows ❌ — how do I see the error?
 
 Open **Settings → Vault Bridges**. The description line below each bridge name shows the error message after "Error:". Common errors are listed below.

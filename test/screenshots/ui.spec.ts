@@ -42,15 +42,31 @@ test.describe('Vault Bridges UI', () => {
 		await expect(page).toHaveScreenshot('add-bridge-modal.png', { fullPage: true });
 	});
 
+	test('Claude integration settings', async ({ page }) => {
+		await page.setViewportSize({ width: 860, height: 760 });
+		await page.goto(harnessUrl('bridges'));
+		await page.waitForSelector('.setting-item');
+		await page.waitForTimeout(300);
+		await expect(page).toHaveScreenshot('settings-claude-integration.png', { fullPage: true });
+	});
+
+	test('conflict resolution modal', async ({ page }) => {
+		await page.setViewportSize({ width: 860, height: 760 });
+		await page.goto(harnessUrl('conflict-modal'));
+		await page.waitForSelector('.modal-container');
+		await page.waitForTimeout(300);
+		await expect(page).toHaveScreenshot('conflict-resolution-modal.png', { fullPage: true });
+	});
+
 	test('error bridge detail', async ({ page }) => {
 		await page.setViewportSize({ width: 860, height: 620 });
 		await page.goto(harnessUrl('bridges'));
 		await page.waitForSelector('.setting-item');
 		await page.waitForTimeout(200);
 
-		// Hover the error bridge's sync button to show the tooltip
-		const syncButtons = page.locator('button[title="Sync this bridge"]');
-		await syncButtons.nth(1).hover(); // Team Wiki (error state)
+		// Hover the pull button for the error bridge (Team Wiki) to show the tooltip
+		const pullButtons = page.locator('button[title="Pull: repo → vault"]');
+		await pullButtons.nth(1).hover(); // Team Wiki (error state)
 		await page.waitForTimeout(150);
 		await expect(page).toHaveScreenshot('error-state.png', { fullPage: true });
 	});
