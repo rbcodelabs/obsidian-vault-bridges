@@ -18,9 +18,38 @@ export interface Bridge {
 export interface VaultBridgesSettings {
 	bridges: Bridge[];
 	syncOnStartup: boolean;
+	claudePath: string;
+	claudeEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: VaultBridgesSettings = {
 	bridges: [],
 	syncOnStartup: true,
+	claudePath: '/opt/homebrew/bin/claude',
+	claudeEnabled: true,
 };
+
+export type GitErrorType = 'conflict' | 'pull_rejected' | 'push_rejected' | 'auth_failure' | 'network_error' | 'generic';
+
+export interface GitFixStep {
+	id: string;
+	description: string;
+	command: string;      // complete runnable shell command
+	isDestructive: boolean;
+}
+
+export interface GitFixPlan {
+	summary: string;
+	steps: GitFixStep[];
+	warningMessage?: string;
+}
+
+export interface GitDiagnostics {
+	errorText: string;
+	repoPath: string;
+	errorType: GitErrorType;
+	gitStatus: string;
+	gitLog: string;
+	gitDiff: string;
+	operation: 'pull' | 'push';
+}

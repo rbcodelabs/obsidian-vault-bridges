@@ -15,3 +15,45 @@
 .vault-bridges-status-bar {
 	font-size: var(--font-ui-small);
 }
+
+/* Claude recovery modal */
+.vault-bridges-recovery-warning {
+	background: var(--background-modifier-error);
+	color: var(--text-error);
+	border-radius: 4px;
+	padding: 8px 12px;
+	margin-bottom: 12px;
+}
+
+.vault-bridges-recovery-repo {
+	color: var(--text-muted);
+	font-size: 0.9em;
+	margin-bottom: 0.5em;
+}
+
+.vault-bridges-recovery-footer {
+	color: var(--text-error);
+	font-style: italic;
+	font-size: 0.9em;
+	margin-top: 8px;
+}
+
+.vault-bridges-step-list {
+	margin: 8px 0;
+	padding-left: 1.5em;
+}
+
+.vault-bridges-step-destructive .vault-bridges-step-description {
+	color: var(--text-error);
+	font-weight: 600;
+}
+
+.vault-bridges-step-command {
+	display: block;
+	background: var(--code-background);
+	padding: 4px 8px;
+	border-radius: 3px;
+	font-size: 0.85em;
+	margin-top: 4px;
+	word-break: break-all;
+}

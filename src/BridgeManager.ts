@@ -4,10 +4,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Notice } from 'obsidian';
 import type VaultBridgesPlugin from '../main';
-import type { Bridge } from './types';
+import type { Bridge, GitDiagnostics } from './types';
 import { DirtyWarningModal } from './DirtyWarningModal';
+import { classifyGitError } from './GitErrorClassifier';
+import { ClaudeGitSession } from './ClaudeGitSession';
+import { ConflictResolutionModal } from './ConflictResolutionModal';
 
-const execAsync = promisify(exec);
+export const execAsync = promisify(exec);
 
 export class BridgeManager {
 	constructor(private plugin: VaultBridgesPlugin) {}
@@ -77,6 +80,88 @@ export class BridgeManager {
 			if (!(relPath in current)) return true;
 		}
 		return false;
+	}
+
+	async gatherDiagnostics(repoPath: string, errorText: string, operation: 'pull' | 'push'): Promise<GitDiagnostics> {
+		const errorType = classifyGitError(errorText);
+		const run = async (cmd: string): Promise<string> => {
+			try {
+				const { stdout } = await execAsync(cmd, { timeout: 10000 });
+				return stdout.trim();
+			} catch {
+				return '';
+			}
+		};
+		const [gitStatus, gitLog, gitDiff] = await Promise.all([
+			run(`git -C "${repoPath}" status`),
+			run(`git -C "${repoPath}" log --oneline -5`),
+			run(`git -C "${repoPath}" diff --name-only`),
+		]);
+		return { errorText, repoPath, errorType, gitStatus, gitLog, gitDiff, operation };
+	}
+
+	async triggerClaudeRecovery(bridge: Bridge, errorText: string, operation: 'pull' | 'push'): Promise<void> {
+		const { claudePath, claudeEnabled } = this.plugin.settings;
+		if (!claudeEnabled || !claudePath) return;
+
+		const diag = await this.gatherDiagnostics(bridge.repoPath, errorText, operation);
+
+		// For auth/network errors, a targeted hint is more useful than Claude analysis
+		if (diag.errorType === 'auth_failure') {
+			new Notice('Vault Bridges: Auth error — run `ssh-add` or check your git credentials, then try again.', 10000);
+			return;
+		}
+		if (diag.errorType === 'network_error') {
+			new Notice('Vault Bridges: Network error — check your internet connection and the remote URL, then try again.', 10000);
+			return;
+		}
+
+		new Notice(`Vault Bridges: Analyzing git error with Claude…`, 4000);
+
+		try {
+			const session = new ClaudeGitSession(claudePath);
+			const plan = await session.analyzeFix(diag);
+
+			new ConflictResolutionModal(this.plugin.app, bridge, plan, {
+				onApprove: async () => {
+					await this.executePlan(bridge, plan.steps, operation);
+				},
+				onReject: () => {
+					new Notice(`Vault Bridges: Fix rejected — "${bridge.name}" remains in error state.`);
+				},
+			}).open();
+		} catch (err) {
+			console.error('Vault Bridges: Claude recovery failed:', err);
+			new Notice(`Vault Bridges: Claude analysis failed — ${err instanceof Error ? err.message : String(err)}`, 8000);
+		}
+	}
+
+	async executePlan(bridge: Bridge, steps: import('./types').GitFixStep[], operation: 'pull' | 'push'): Promise<void> {
+		new Notice(`Vault Bridges: Running fix for "${bridge.name}"…`);
+
+		for (const step of steps) {
+			try {
+				const { stdout, stderr } = await execAsync(step.command, { timeout: 30000 });
+				console.log(`Vault Bridges: Step "${step.description}" OK:`, stdout || stderr);
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				bridge.status = 'error';
+				bridge.lastError = `Fix step failed: ${msg}`;
+				await this.plugin.saveSettings();
+				this.plugin.statusBar.update();
+				new Notice(`Vault Bridges: Fix step failed — "${step.description}": ${msg}`, 10000);
+				return;
+			}
+		}
+
+		new Notice(`Vault Bridges: Fix applied — retrying ${operation} for "${bridge.name}"…`);
+
+		// Re-run original operation
+		if (operation === 'pull') {
+			await this.syncBridge(bridge, true);
+		} else {
+			await this.pushBridge(bridge);
+		}
 	}
 
 	// ─── Sync (pull) ──────────────────────────────────────────────────────────
@@ -154,6 +239,12 @@ export class BridgeManager {
 			bridge.lastError = err instanceof Error ? err.message : String(err);
 			console.error(`Vault Bridges: Error syncing "${bridge.name}":`, err);
 			new Notice(`Vault Bridges: ❌ "${bridge.name}" — ${bridge.lastError}`, 8000);
+			// Fire-and-forget Claude recovery (does not block the finally block)
+			if (this.plugin.settings.claudeEnabled) {
+				this.triggerClaudeRecovery(bridge, bridge.lastError, 'pull').catch(e =>
+					console.error('Vault Bridges: Recovery trigger failed:', e)
+				);
+			}
 		} finally {
 			await this.plugin.saveSettings();
 			this.plugin.statusBar.update();
@@ -335,6 +426,11 @@ export class BridgeManager {
 			bridge.lastError = err instanceof Error ? err.message : String(err);
 			console.error(`Vault Bridges: Error pushing "${bridge.name}":`, err);
 			new Notice(`Vault Bridges: ❌ "${bridge.name}" push failed — ${bridge.lastError}`, 8000);
+			if (this.plugin.settings.claudeEnabled) {
+				this.triggerClaudeRecovery(bridge, bridge.lastError, 'push').catch(e =>
+					console.error('Vault Bridges: Recovery trigger failed:', e)
+				);
+			}
 		} finally {
 			await this.plugin.saveSettings();
 			this.plugin.statusBar.update();

@@ -31,6 +31,41 @@ export class VaultBridgesSettingsTab extends PluginSettingTab {
 					})
 			);
 
+		// Claude integration section
+		containerEl.createEl('h3', { text: 'Claude Code Integration' });
+		containerEl.createEl('p', {
+			text: 'When a git error occurs, Claude will analyze it and propose a fix for your approval.',
+			cls: 'vault-bridges-description',
+		});
+
+		new Setting(containerEl)
+			.setName('Enable Claude error recovery')
+			.setDesc('When a pull or push fails, automatically ask Claude to diagnose and propose a fix.')
+			.addToggle(toggle =>
+				toggle
+					.setValue(this.plugin.settings.claudeEnabled)
+					.onChange(async value => {
+						this.plugin.settings.claudeEnabled = value;
+						await this.plugin.saveSettings();
+						this.display(); // re-render to show/hide path field
+					})
+			);
+
+		if (this.plugin.settings.claudeEnabled) {
+			new Setting(containerEl)
+				.setName('Claude executable path')
+				.setDesc('Full path to the claude binary (e.g. /opt/homebrew/bin/claude).')
+				.addText(text =>
+					text
+						.setPlaceholder('/opt/homebrew/bin/claude')
+						.setValue(this.plugin.settings.claudePath)
+						.onChange(async value => {
+							this.plugin.settings.claudePath = value;
+							await this.plugin.saveSettings();
+						})
+				);
+		}
+
 		// Bridges list
 		containerEl.createEl('h3', { text: 'Bridges' });
 

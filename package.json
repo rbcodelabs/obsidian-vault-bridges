@@ -21,6 +21,9 @@
 		"url": "https://github.com/richardbowman"
 	},
 	"license": "MIT",
+	"dependencies": {
+		"@anthropic-ai/claude-agent-sdk": "^0.2.132"
+	},
 	"devDependencies": {
 		"@playwright/test": "^1.49.0",
 		"@types/node": "^20.10.0",
