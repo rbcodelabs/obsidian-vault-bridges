@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-vault-bridges",
-	"version": "0.1.0",
+	"version": "0.3.0",
 	"description": "Link external Git repositories into your Obsidian vault via managed symlinks.",
 	"main": "main.js",
 	"scripts": {
