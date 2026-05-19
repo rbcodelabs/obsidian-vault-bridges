@@ -49,12 +49,12 @@ Vault Bridges adds a third option: a managed, bidirectional bridge that stays fr
 
 1. Install the [BRAT plugin](https://github.com/TfTHacker/obsidian42-brat) from the Obsidian community plugins list
 2. Open BRAT settings → **Add Beta Plugin**
-3. Enter: `richardbowman/obsidian-vault-bridges`
+3. Enter: `rbcodelabs/obsidian-vault-bridges`
 4. Enable **Vault Bridges** in Settings → Community Plugins
 
 ### Option 2: Manual
 
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/richardbowman/obsidian-vault-bridges/releases)
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/rbcodelabs/obsidian-vault-bridges/releases)
 2. Create the folder `.obsidian/plugins/vault-bridges/` inside your vault
 3. Copy the three files into that folder
 4. Restart Obsidian and enable the plugin in Settings → Community Plugins
@@ -147,7 +147,7 @@ Individual bridge pull and push are also available from the **Settings → Vault
 ## Development
 
 ```bash
-git clone https://github.com/richardbowman/obsidian-vault-bridges
+git clone https://github.com/rbcodelabs/obsidian-vault-bridges
 cd obsidian-vault-bridges
 npm install
 

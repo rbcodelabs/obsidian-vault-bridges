@@ -32,12 +32,12 @@ If that command works, you're set. The plugin looks for the `claude` binary at `
 
 1. Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) from the Obsidian community plugins list
 2. Open **Settings → BRAT → Add Beta Plugin**
-3. Enter `richardbowman/obsidian-vault-bridges`
+3. Enter `rbcodelabs/obsidian-vault-bridges`
 4. Enable **Vault Bridges** in **Settings → Community Plugins**
 
 ### Manual Install
 
-1. Download `main.js`, `manifest.json`, `styles.css` from the latest [GitHub release](https://github.com/richardbowman/obsidian-vault-bridges/releases)
+1. Download `main.js`, `manifest.json`, `styles.css` from the latest [GitHub release](https://github.com/rbcodelabs/obsidian-vault-bridges/releases)
 2. In your vault, create the folder: `.obsidian/plugins/vault-bridges/`
 3. Copy the three files into that folder
 4. Restart Obsidian

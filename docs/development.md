@@ -16,7 +16,7 @@ Everything you need to build, test, and extend Vault Bridges.
 ## Setup
 
 ```bash
-git clone https://github.com/richardbowman/obsidian-vault-bridges
+git clone https://github.com/rbcodelabs/obsidian-vault-bridges
 cd obsidian-vault-bridges
 npm install
 ```

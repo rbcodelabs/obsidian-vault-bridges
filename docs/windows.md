@@ -65,7 +65,7 @@ If your repo or vault path is deeply nested and exceeds 260 characters total, Wi
 
 ## Reporting Windows Issues
 
-If you encounter a Windows-specific issue not covered here, please [open a GitHub issue](https://github.com/richardbowman/obsidian-vault-bridges/issues) with:
+If you encounter a Windows-specific issue not covered here, please [open a GitHub issue](https://github.com/rbcodelabs/obsidian-vault-bridges/issues) with:
 - Your Windows version
 - The exact error message from the Vault Bridges settings panel or developer console
 - Steps to reproduce

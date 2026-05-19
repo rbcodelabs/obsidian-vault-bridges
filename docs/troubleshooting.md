@@ -186,7 +186,7 @@ Then run `git rm -r --cached "Work/Company Docs"` (etc.) to untrack any files th
 
 ## Something else?
 
-[Open a GitHub issue](https://github.com/richardbowman/obsidian-vault-bridges/issues) and include:
+[Open a GitHub issue](https://github.com/rbcodelabs/obsidian-vault-bridges/issues) and include:
 - Your OS and version
 - Obsidian version
 - The exact error message from the settings panel or developer console
