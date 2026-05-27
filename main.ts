@@ -3,17 +3,24 @@ import { VaultBridgesSettings, DEFAULT_SETTINGS } from './src/types';
 import { BridgeManager } from './src/BridgeManager';
 import { VaultBridgesSettingsTab } from './src/SettingsTab';
 import { StatusBarManager } from './src/StatusBar';
+import { VaultBridgesAPI } from './src/VaultBridgesAPI';
+
+export type { VaultBridgesAPI } from './src/VaultBridgesAPI';
+export type { AddBridgeOptions } from './src/VaultBridgesAPI';
 
 export default class VaultBridgesPlugin extends Plugin {
 	settings!: VaultBridgesSettings;
 	bridgeManager!: BridgeManager;
 	statusBar!: StatusBarManager;
+	/** Public API for other plugins. See src/VaultBridgesAPI.ts for full docs. */
+	api!: VaultBridgesAPI;
 
 	async onload() {
 		await this.loadSettings();
 
 		this.bridgeManager = new BridgeManager(this);
 		this.statusBar = new StatusBarManager(this);
+		this.api = new VaultBridgesAPI(this);
 
 		this.addSettingTab(new VaultBridgesSettingsTab(this.app, this));
 
