@@ -125,13 +125,72 @@ Your files now appear at `Work/ADRs` inside your vault as real, fully-indexed co
 
 Access via **Cmd/Ctrl+P**:
 
+### Bulk commands
+
 | Command | Description |
 |---|---|
 | `Vault Bridges: Sync All Bridges` | Pull all bridges (git pull + copy files into vault) |
 | `Vault Bridges: Push All Bridges` | Push all bridges (copy vault files to repo, commit, and push) |
-| `Vault Bridges: Rebuild All Copies` | Re-copy all files from repos into the vault — useful after moving the vault or if files get out of sync |
+| `Vault Bridges: Rebuild All Links` | Re-copy all files from repos into the vault — useful after moving the vault or if files get out of sync |
 
-Individual bridge pull and push are also available from the **Settings → Vault Bridges** panel via the per-bridge buttons.
+### Per-bridge commands
+
+For every configured bridge, two commands are registered automatically:
+
+| Command pattern | Description |
+|---|---|
+| `Vault Bridges: Pull "<bridge name>"` | `git pull` then copy files into the vault for this bridge |
+| `Vault Bridges: Push "<bridge name>"` | Copy vault files back to the repo, commit, and push for this bridge |
+
+Per-bridge commands appear in the palette immediately when a bridge is added (no restart required) and update their label if you rename a bridge. You can assign hotkeys to them in **Settings → Hotkeys** just like any other command.
+
+---
+
+## Public API
+
+Other plugins can drive Vault Bridges programmatically via the plugin's public API. No runtime dependency is needed — just look up the plugin instance:
+
+```typescript
+const vb = (this.app as any).plugins.plugins['vault-bridges'];
+
+// Check it's loaded before using
+if (vb?.api) {
+  await vb.api.addBridge({
+    name: 'Agentic PM Playbook',
+    repoPath: '/Users/rick/projects/agent-pm-playbook',
+    vaultPath: 'Playbooks/Agentic PM Playbook',
+    syncNow: true,
+  });
+}
+```
+
+For full type safety, import the types (no runtime coupling):
+
+```typescript
+import type { VaultBridgesAPI, AddBridgeOptions } from 'vault-bridges/src/VaultBridgesAPI';
+```
+
+### API Methods
+
+| Method | Description |
+|---|---|
+| `getBridges()` | Returns a snapshot of all configured bridges |
+| `addBridge(options)` | Adds a new bridge; deduplicates by `repoPath + vaultPath`; optional `syncNow` flag triggers an immediate pull |
+| `removeBridge(id)` | Removes a bridge by id; no-ops if not found |
+| `syncBridge(id)` | Triggers a pull (repo → vault) for the bridge with the given id |
+| `pushBridge(id)` | Triggers a push (vault → repo) for the bridge with the given id |
+
+### `addBridge` options
+
+| Option | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `name` | `string` | ✅ | — | Display label for the bridge |
+| `repoPath` | `string` | ✅ | — | Absolute path to the local git repo root |
+| `vaultPath` | `string` | ✅ | — | Vault-relative destination path |
+| `sourcePath` | `string` | — | `''` | Subfolder within the repo to copy (blank = whole repo) |
+| `branch` | `string` | — | `'main'` | Git branch to pull from / push to |
+| `autoSync` | `boolean` | — | `true` | Pull this bridge automatically on Obsidian startup |
+| `syncNow` | `boolean` | — | `false` | Immediately pull from Git after adding |
 
 ---
 

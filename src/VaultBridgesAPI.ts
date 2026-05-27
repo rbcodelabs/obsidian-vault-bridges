@@ -83,6 +83,7 @@ export class VaultBridgesAPI {
 		this.plugin.settings.bridges.push(bridge);
 		await this.plugin.saveSettings();
 		this.plugin.statusBar.update();
+		this.plugin.registerBridgeCommands(bridge);
 
 		new Notice(`Vault Bridges: added "${name}"`);
 
