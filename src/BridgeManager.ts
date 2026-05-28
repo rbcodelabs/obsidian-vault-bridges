@@ -1,5 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { createHash } from 'crypto';
+import { readFileSync } from 'fs';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Notice } from 'obsidian';
@@ -12,6 +14,10 @@ import { ConflictResolutionModal } from './ConflictResolutionModal';
 
 export const execAsync = promisify(exec);
 
+function hashFile(filePath: string): string {
+	return createHash('sha1').update(readFileSync(filePath)).digest('hex');
+}
+
 export class BridgeManager {
 	constructor(private plugin: VaultBridgesPlugin) {}
 
@@ -22,8 +28,8 @@ export class BridgeManager {
 
 	// ─── Manifest / dirty tracking ────────────────────────────────────────────
 
-	private buildManifest(basePath: string, currentPath: string): Record<string, number> {
-		const manifest: Record<string, number> = {};
+	private buildManifest(basePath: string, currentPath: string): Record<string, string> {
+		const manifest: Record<string, string> = {};
 		if (!fs.existsSync(currentPath)) return manifest;
 
 		const entries = fs.readdirSync(currentPath, { withFileTypes: true });
@@ -33,7 +39,7 @@ export class BridgeManager {
 				Object.assign(manifest, this.buildManifest(basePath, fullPath));
 			} else if (entry.isFile()) {
 				const relPath = path.relative(basePath, fullPath);
-				manifest[relPath] = fs.statSync(fullPath).mtimeMs;
+				manifest[relPath] = hashFile(fullPath);
 			}
 		}
 		return manifest;
@@ -72,8 +78,8 @@ export class BridgeManager {
 		const current = this.buildManifest(destPath, destPath);
 
 		// Check for modified or new files
-		for (const [relPath, mtime] of Object.entries(current)) {
-			if (bridge.fileManifest[relPath] !== mtime) return true;
+		for (const [relPath, hash] of Object.entries(current)) {
+			if (bridge.fileManifest[relPath] !== hash) return true;
 		}
 		// Check for deleted files
 		for (const relPath of Object.keys(bridge.fileManifest)) {
@@ -304,6 +310,7 @@ export class BridgeManager {
 			fs.cpSync(sourcePath, destPath, {
 				recursive: true,
 				force: true,
+				preserveTimestamps: true,
 				filter: (src: string) => path.basename(src) !== '.git',
 			});
 		} else {
