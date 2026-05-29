@@ -57,21 +57,29 @@ export class BridgeManager {
 	}
 
 	onVaultFileModified(filePath: string): void {
+		let anyBridgeFile = false;
 		let anyChanged = false;
 		for (const bridge of this.plugin.settings.bridges) {
 			if (!bridge.fileManifest) continue;
 			// Check if the modified file is inside this bridge's vault path
 			if (!filePath.startsWith(bridge.vaultPath + '/') && filePath !== bridge.vaultPath) continue;
+			anyBridgeFile = true;
 			const isDirty = this.checkDirty(bridge);
 			if (bridge.isDirty !== isDirty) {
 				bridge.isDirty = isDirty;
 				anyChanged = true;
 			}
 		}
+		// Always re-render the command bar for any bridge file change so the
+		// pending-changes count stays current even when isDirty was already true.
+		if (anyBridgeFile) {
+			this.plugin.fileCommandBar?.update();
+		}
+		// Only persist settings when the dirty flag actually flipped (avoids
+		// excessive writes on every keystroke).
 		if (anyChanged) {
 			this.plugin.saveSettings();
 			this.plugin.statusBar.update();
-			this.plugin.fileCommandBar?.update();
 		}
 	}
 
