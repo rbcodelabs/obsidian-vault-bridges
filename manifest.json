@@ -1,7 +1,7 @@
 {
 	"id": "vault-bridges",
 	"name": "Vault Bridges",
-	"version": "0.3.2",
+	"version": "0.3.3",
 	"minAppVersion": "0.15.0",
 	"description": "Bidirectional sync between local Git repos and your vault. Pull repo files in as real indexed copies, edit in Obsidian, and push commits back — with overwrite protection.",
 	"author": "Rick Bowman",
