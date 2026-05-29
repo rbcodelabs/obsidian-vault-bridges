@@ -18,6 +18,11 @@ function hashFile(filePath: string): string {
 	return createHash('sha1').update(readFileSync(filePath)).digest('hex');
 }
 
+/** Escape a string for safe interpolation inside a double-quoted shell argument. */
+function shellEsc(s: string): string {
+	return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+}
+
 export class BridgeManager {
 	constructor(private plugin: VaultBridgesPlugin) {}
 
@@ -66,6 +71,7 @@ export class BridgeManager {
 		if (anyChanged) {
 			this.plugin.saveSettings();
 			this.plugin.statusBar.update();
+			this.plugin.fileCommandBar?.update();
 		}
 	}
 
@@ -155,6 +161,7 @@ export class BridgeManager {
 				bridge.lastError = `Fix step failed: ${msg}`;
 				await this.plugin.saveSettings();
 				this.plugin.statusBar.update();
+				this.plugin.fileCommandBar?.update();
 				new Notice(`Vault Bridges: Fix step failed — "${step.description}": ${msg}`, 10000);
 				return;
 			}
@@ -187,6 +194,7 @@ export class BridgeManager {
 
 		await this.plugin.saveSettings();
 		this.plugin.statusBar.update();
+		this.plugin.fileCommandBar?.update();
 		new Notice('Vault Bridges: All bridges synced ✓');
 	}
 
@@ -208,6 +216,7 @@ export class BridgeManager {
 		}
 		await this.plugin.saveSettings();
 		this.plugin.statusBar.update();
+		this.plugin.fileCommandBar?.update();
 	}
 
 	async syncBridge(bridge: Bridge, force = false): Promise<void> {
@@ -229,6 +238,7 @@ export class BridgeManager {
 
 		bridge.status = 'syncing';
 		this.plugin.statusBar.update();
+		this.plugin.fileCommandBar?.update();
 
 		try {
 			await this.gitPull(bridge);
@@ -254,6 +264,7 @@ export class BridgeManager {
 		} finally {
 			await this.plugin.saveSettings();
 			this.plugin.statusBar.update();
+			this.plugin.fileCommandBar?.update();
 		}
 	}
 
@@ -363,12 +374,14 @@ export class BridgeManager {
 		}
 		await this.plugin.saveSettings();
 		this.plugin.statusBar.update();
+		this.plugin.fileCommandBar?.update();
 		new Notice('Vault Bridges: All bridges pushed ✓');
 	}
 
-	async pushBridge(bridge: Bridge): Promise<void> {
+	async pushBridge(bridge: Bridge, commitMessage?: string): Promise<void> {
 		bridge.status = 'syncing';
 		this.plugin.statusBar.update();
+		this.plugin.fileCommandBar?.update();
 
 		try {
 			// Validate branch
@@ -410,10 +423,11 @@ export class BridgeManager {
 				return;
 			}
 
-			// Commit and push
+			// Build commit message (user-supplied or auto-generated)
 			const timestamp = new Date().toLocaleString();
+			const rawMsg = commitMessage?.trim() || `Update from Obsidian vault (${timestamp})`;
 			await execAsync(
-				`git -C "${bridge.repoPath}" commit -m "Update from Obsidian vault (${timestamp})"`,
+				`git -C "${bridge.repoPath}" commit -m "${shellEsc(rawMsg)}"`,
 				{ timeout: 15000 }
 			);
 			await execAsync(
@@ -441,6 +455,7 @@ export class BridgeManager {
 		} finally {
 			await this.plugin.saveSettings();
 			this.plugin.statusBar.update();
+			this.plugin.fileCommandBar?.update();
 		}
 	}
 }

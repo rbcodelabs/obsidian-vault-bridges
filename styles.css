@@ -57,3 +57,161 @@
 	margin-top: 4px;
 	word-break: break-all;
 }
+
+/* ─── Document Command Bar ─────────────────────────────────────────────────── */
+
+.vault-bridges-command-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 4px 14px;
+	min-height: 30px;
+	flex-shrink: 0;
+	background: var(--background-secondary);
+	border-bottom: 1px solid var(--background-modifier-border);
+	font-size: var(--font-ui-small);
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+/* Dirty state: amber left accent */
+.vault-bridges-command-bar.is-dirty {
+	background: var(--background-secondary);
+	border-left: 3px solid var(--color-orange, #e8a029);
+	border-bottom-color: var(--background-modifier-border);
+}
+
+/* Error state: red tint */
+.vault-bridges-command-bar.is-error {
+	background: var(--background-modifier-error-hover, rgba(220, 38, 38, 0.07));
+	border-left: 3px solid var(--color-red, #dc2626);
+	border-bottom-color: transparent;
+}
+
+/* Syncing state: no accent, slightly muted */
+.vault-bridges-command-bar.is-syncing {
+	opacity: 0.8;
+}
+
+/* Left section */
+.vault-bridges-bar-info {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	overflow: hidden;
+	flex: 1;
+	min-width: 0;
+}
+
+.vault-bridges-bar-icon {
+	flex-shrink: 0;
+	font-size: 0.85em;
+	line-height: 1;
+}
+
+/* Clean state: green icon */
+.vault-bridges-command-bar:not(.is-dirty):not(.is-error):not(.is-syncing)
+.vault-bridges-bar-icon {
+	color: var(--color-green, #16a34a);
+}
+
+/* Dirty state: orange icon */
+.vault-bridges-command-bar.is-dirty .vault-bridges-bar-icon {
+	color: var(--color-orange, #e8a029);
+}
+
+/* Error state: red icon */
+.vault-bridges-command-bar.is-error .vault-bridges-bar-icon {
+	color: var(--text-error);
+}
+
+.vault-bridges-bar-name {
+	font-weight: 600;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 200px;
+}
+
+.vault-bridges-bar-branch {
+	flex-shrink: 0;
+	color: var(--text-faint);
+	background: var(--background-modifier-border);
+	padding: 1px 7px;
+	border-radius: 9px;
+	white-space: nowrap;
+	font-size: 0.85em;
+}
+
+.vault-bridges-bar-status-label {
+	flex-shrink: 0;
+	font-style: italic;
+}
+
+.vault-bridges-bar-status-label.is-clean {
+	color: var(--text-faint);
+}
+
+.vault-bridges-bar-status-label.is-dirty {
+	color: var(--color-orange, #e8a029);
+}
+
+.vault-bridges-bar-status-label.is-syncing {
+	color: var(--text-muted);
+}
+
+.vault-bridges-bar-status-label.is-error {
+	color: var(--text-error);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 300px;
+	cursor: help;
+}
+
+/* Right section */
+.vault-bridges-bar-actions {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	flex-shrink: 0;
+}
+
+.vault-bridges-bar-btn {
+	display: inline-flex;
+	align-items: center;
+	padding: 2px 10px;
+	height: 22px;
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	cursor: pointer;
+	font-size: var(--font-ui-smaller, 11px);
+	font-family: inherit;
+	white-space: nowrap;
+	transition: background 80ms ease;
+}
+
+.vault-bridges-bar-btn:hover:not(:disabled) {
+	background: var(--interactive-hover);
+}
+
+.vault-bridges-bar-btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+/* Highlighted push button when bridge is dirty */
+.vault-bridges-bar-btn.is-cta {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.vault-bridges-bar-btn.is-cta:hover:not(:disabled) {
+	background: var(--interactive-accent-hover, var(--interactive-accent));
+	filter: brightness(1.08);
+}
