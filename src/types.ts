@@ -29,6 +29,12 @@ export const DEFAULT_SETTINGS: VaultBridgesSettings = {
 	claudeEnabled: true,
 };
 
+export interface ChangedFile {
+	/** Path relative to the bridge's vaultPath (and to the repo's sourcePath) */
+	relPath: string;
+	status: 'modified' | 'added' | 'deleted';
+}
+
 export type GitErrorType = 'conflict' | 'pull_rejected' | 'push_rejected' | 'auth_failure' | 'network_error' | 'generic';
 
 export interface GitFixStep {

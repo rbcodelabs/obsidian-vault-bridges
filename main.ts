@@ -3,17 +3,20 @@ import { VaultBridgesSettings, DEFAULT_SETTINGS } from './src/types';
 import { BridgeManager } from './src/BridgeManager';
 import { VaultBridgesSettingsTab } from './src/SettingsTab';
 import { StatusBarManager } from './src/StatusBar';
+import { FileCommandBar } from './src/FileCommandBar';
 
 export default class VaultBridgesPlugin extends Plugin {
 	settings!: VaultBridgesSettings;
 	bridgeManager!: BridgeManager;
 	statusBar!: StatusBarManager;
+	fileCommandBar!: FileCommandBar;
 
 	async onload() {
 		await this.loadSettings();
 
 		this.bridgeManager = new BridgeManager(this);
 		this.statusBar = new StatusBarManager(this);
+		this.fileCommandBar = new FileCommandBar(this);
 
 		this.addSettingTab(new VaultBridgesSettingsTab(this.app, this));
 
@@ -51,6 +54,7 @@ export default class VaultBridgesPlugin extends Plugin {
 	}
 
 	onunload() {
+		this.fileCommandBar?.destroy();
 		console.log('Vault Bridges: unloaded');
 	}
 

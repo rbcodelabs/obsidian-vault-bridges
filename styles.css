@@ -57,3 +57,331 @@
 	margin-top: 4px;
 	word-break: break-all;
 }
+
+/* ─── Document Command Bar ─────────────────────────────────────────────────── */
+
+.vault-bridges-command-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 4px 14px;
+	min-height: 30px;
+	flex-shrink: 0;
+	background: var(--background-secondary);
+	border-bottom: 1px solid var(--background-modifier-border);
+	font-size: var(--font-ui-small);
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+/* Dirty state: amber left accent */
+.vault-bridges-command-bar.is-dirty {
+	background: var(--background-secondary);
+	border-left: 3px solid var(--color-orange, #e8a029);
+	border-bottom-color: var(--background-modifier-border);
+}
+
+/* Error state: red tint */
+.vault-bridges-command-bar.is-error {
+	background: var(--background-modifier-error-hover, rgba(220, 38, 38, 0.07));
+	border-left: 3px solid var(--color-red, #dc2626);
+	border-bottom-color: transparent;
+}
+
+/* Syncing state: no accent, slightly muted */
+.vault-bridges-command-bar.is-syncing {
+	opacity: 0.8;
+}
+
+/* Left section */
+.vault-bridges-bar-info {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	overflow: hidden;
+	flex: 1;
+	min-width: 0;
+}
+
+.vault-bridges-bar-icon {
+	flex-shrink: 0;
+	font-size: 0.85em;
+	line-height: 1;
+}
+
+/* Clean state: green icon */
+.vault-bridges-command-bar:not(.is-dirty):not(.is-error):not(.is-syncing)
+.vault-bridges-bar-icon {
+	color: var(--color-green, #16a34a);
+}
+
+/* Dirty state: orange icon */
+.vault-bridges-command-bar.is-dirty .vault-bridges-bar-icon {
+	color: var(--color-orange, #e8a029);
+}
+
+/* Error state: red icon */
+.vault-bridges-command-bar.is-error .vault-bridges-bar-icon {
+	color: var(--text-error);
+}
+
+.vault-bridges-bar-name {
+	font-weight: 600;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 200px;
+}
+
+.vault-bridges-bar-branch {
+	flex-shrink: 0;
+	color: var(--text-faint);
+	background: var(--background-modifier-border);
+	padding: 1px 7px;
+	border-radius: 9px;
+	white-space: nowrap;
+	font-size: 0.85em;
+}
+
+.vault-bridges-bar-status-label {
+	flex-shrink: 0;
+	font-style: italic;
+}
+
+.vault-bridges-bar-status-label.is-clean {
+	color: var(--text-faint);
+}
+
+.vault-bridges-bar-status-label.is-dirty {
+	color: var(--color-orange, #e8a029);
+}
+
+.vault-bridges-bar-status-label.is-syncing {
+	color: var(--text-muted);
+}
+
+.vault-bridges-bar-status-label.is-error {
+	color: var(--text-error);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 300px;
+	cursor: help;
+}
+
+/* Right section */
+.vault-bridges-bar-actions {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	flex-shrink: 0;
+}
+
+.vault-bridges-bar-btn {
+	display: inline-flex;
+	align-items: center;
+	padding: 2px 10px;
+	height: 22px;
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	cursor: pointer;
+	font-size: var(--font-ui-smaller, 11px);
+	font-family: inherit;
+	white-space: nowrap;
+	transition: background 80ms ease;
+}
+
+.vault-bridges-bar-btn:hover:not(:disabled) {
+	background: var(--interactive-hover);
+}
+
+.vault-bridges-bar-btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+/* Highlighted push button when bridge is dirty */
+.vault-bridges-bar-btn.is-cta {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.vault-bridges-bar-btn.is-cta:hover:not(:disabled) {
+	background: var(--interactive-accent-hover, var(--interactive-accent));
+	filter: brightness(1.08);
+}
+
+/* ── Changes pill ──────────────────────────────────────────────────────── */
+
+.vault-bridges-changes-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 1px 8px;
+	height: 20px;
+	background: color-mix(in srgb, var(--color-orange, #e8a029) 15%, transparent);
+	color: var(--color-orange, #e8a029);
+	border: 1px solid color-mix(in srgb, var(--color-orange, #e8a029) 40%, transparent);
+	border-radius: 10px;
+	cursor: pointer;
+	font-size: var(--font-ui-smaller, 11px);
+	font-family: inherit;
+	white-space: nowrap;
+	transition: background 80ms ease, border-color 80ms ease;
+	flex-shrink: 0;
+}
+
+.vault-bridges-changes-pill:hover {
+	background: color-mix(in srgb, var(--color-orange, #e8a029) 25%, transparent);
+}
+
+.vault-bridges-pill-chevron {
+	font-size: 0.8em;
+	opacity: 0.7;
+}
+
+/* ── Pending changes popdown ───────────────────────────────────────────── */
+
+.vault-bridges-command-bar {
+	position: relative; /* anchor for the popdown */
+}
+
+.vault-bridges-changes-popdown {
+	position: absolute;
+	top: calc(100% + 2px);
+	left: 0;
+	z-index: 100;
+	min-width: 340px;
+	max-width: 560px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 6px);
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+	overflow: hidden;
+}
+
+.vault-bridges-popdown-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+}
+
+.vault-bridges-popdown-title {
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.vault-bridges-popdown-close {
+	background: none;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 1.1em;
+	line-height: 1;
+	padding: 0 2px;
+	border-radius: 3px;
+}
+
+.vault-bridges-popdown-close:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.vault-bridges-popdown-list {
+	max-height: 220px;
+	overflow-y: auto;
+	padding: 4px 0;
+}
+
+.vault-bridges-popdown-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 12px;
+	cursor: pointer;
+	user-select: none;
+}
+
+.vault-bridges-popdown-row:hover {
+	background: var(--background-modifier-hover);
+}
+
+.vault-bridges-popdown-row input[type="checkbox"] {
+	flex-shrink: 0;
+	cursor: pointer;
+}
+
+/* M / A / D status badge */
+.vault-bridges-change-badge {
+	flex-shrink: 0;
+	display: inline-block;
+	width: 16px;
+	text-align: center;
+	font-size: 0.75em;
+	font-weight: 700;
+	border-radius: 3px;
+	padding: 1px 0;
+}
+
+.vault-bridges-change-badge.is-modified {
+	color: var(--color-orange, #e8a029);
+}
+
+.vault-bridges-change-badge.is-added {
+	color: var(--color-green, #16a34a);
+}
+
+.vault-bridges-change-badge.is-deleted {
+	color: var(--text-error);
+}
+
+.vault-bridges-popdown-filepath {
+	font-size: var(--font-ui-smaller, 11px);
+	color: var(--text-normal);
+	font-family: var(--font-monospace);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	flex: 1;
+}
+
+.vault-bridges-popdown-footer {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	padding: 8px 12px;
+	border-top: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+}
+
+.vault-bridges-popdown-message {
+	flex: 1;
+	height: 26px;
+	padding: 2px 8px;
+	font-size: var(--font-ui-smaller, 11px);
+	font-family: inherit;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	outline: none;
+}
+
+.vault-bridges-popdown-message:focus {
+	border-color: var(--interactive-accent);
+}
+
+.vault-bridges-popdown-push {
+	flex-shrink: 0;
+	white-space: nowrap;
+}
+

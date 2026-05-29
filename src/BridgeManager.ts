@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Notice } from 'obsidian';
 import type VaultBridgesPlugin from '../main';
-import type { Bridge, GitDiagnostics } from './types';
+import type { Bridge, ChangedFile, GitDiagnostics } from './types';
 import { DirtyWarningModal } from './DirtyWarningModal';
 import { classifyGitError } from './GitErrorClassifier';
 import { ClaudeGitSession } from './ClaudeGitSession';
@@ -16,6 +16,11 @@ export const execAsync = promisify(exec);
 
 function hashFile(filePath: string): string {
 	return createHash('sha1').update(readFileSync(filePath)).digest('hex');
+}
+
+/** Escape a string for safe interpolation inside a double-quoted shell argument. */
+function shellEsc(s: string): string {
+	return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
 }
 
 export class BridgeManager {
@@ -52,17 +57,26 @@ export class BridgeManager {
 	}
 
 	onVaultFileModified(filePath: string): void {
+		let anyBridgeFile = false;
 		let anyChanged = false;
 		for (const bridge of this.plugin.settings.bridges) {
 			if (!bridge.fileManifest) continue;
 			// Check if the modified file is inside this bridge's vault path
 			if (!filePath.startsWith(bridge.vaultPath + '/') && filePath !== bridge.vaultPath) continue;
+			anyBridgeFile = true;
 			const isDirty = this.checkDirty(bridge);
 			if (bridge.isDirty !== isDirty) {
 				bridge.isDirty = isDirty;
 				anyChanged = true;
 			}
 		}
+		// Always re-render the command bar for any bridge file change so the
+		// pending-changes count stays current even when isDirty was already true.
+		if (anyBridgeFile) {
+			this.plugin.fileCommandBar?.update();
+		}
+		// Only persist settings when the dirty flag actually flipped (avoids
+		// excessive writes on every keystroke).
 		if (anyChanged) {
 			this.plugin.saveSettings();
 			this.plugin.statusBar.update();
@@ -86,6 +100,36 @@ export class BridgeManager {
 			if (!(relPath in current)) return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Returns the full list of files that differ from the last recorded manifest.
+	 * Each entry carries a status: 'modified', 'added', or 'deleted'.
+	 * Returns [] when the bridge has no manifest yet.
+	 */
+	getChangedFiles(bridge: Bridge): ChangedFile[] {
+		if (!bridge.fileManifest) return [];
+
+		const destPath = path.join(this.vaultBasePath, bridge.vaultPath);
+		if (!fs.existsSync(destPath)) return [];
+
+		const current = this.buildManifest(destPath, destPath);
+		const changes: ChangedFile[] = [];
+
+		for (const [relPath, hash] of Object.entries(current)) {
+			if (!(relPath in bridge.fileManifest)) {
+				changes.push({ relPath, status: 'added' });
+			} else if (bridge.fileManifest[relPath] !== hash) {
+				changes.push({ relPath, status: 'modified' });
+			}
+		}
+		for (const relPath of Object.keys(bridge.fileManifest)) {
+			if (!(relPath in current)) {
+				changes.push({ relPath, status: 'deleted' });
+			}
+		}
+
+		return changes.sort((a, b) => a.relPath.localeCompare(b.relPath));
 	}
 
 	async gatherDiagnostics(repoPath: string, errorText: string, operation: 'pull' | 'push'): Promise<GitDiagnostics> {
@@ -155,6 +199,7 @@ export class BridgeManager {
 				bridge.lastError = `Fix step failed: ${msg}`;
 				await this.plugin.saveSettings();
 				this.plugin.statusBar.update();
+				this.plugin.fileCommandBar?.update();
 				new Notice(`Vault Bridges: Fix step failed — "${step.description}": ${msg}`, 10000);
 				return;
 			}
@@ -187,6 +232,7 @@ export class BridgeManager {
 
 		await this.plugin.saveSettings();
 		this.plugin.statusBar.update();
+		this.plugin.fileCommandBar?.update();
 		new Notice('Vault Bridges: All bridges synced ✓');
 	}
 
@@ -208,6 +254,7 @@ export class BridgeManager {
 		}
 		await this.plugin.saveSettings();
 		this.plugin.statusBar.update();
+		this.plugin.fileCommandBar?.update();
 	}
 
 	async syncBridge(bridge: Bridge, force = false): Promise<void> {
@@ -229,6 +276,7 @@ export class BridgeManager {
 
 		bridge.status = 'syncing';
 		this.plugin.statusBar.update();
+		this.plugin.fileCommandBar?.update();
 
 		try {
 			await this.gitPull(bridge);
@@ -254,6 +302,7 @@ export class BridgeManager {
 		} finally {
 			await this.plugin.saveSettings();
 			this.plugin.statusBar.update();
+			this.plugin.fileCommandBar?.update();
 		}
 	}
 
@@ -363,12 +412,26 @@ export class BridgeManager {
 		}
 		await this.plugin.saveSettings();
 		this.plugin.statusBar.update();
+		this.plugin.fileCommandBar?.update();
 		new Notice('Vault Bridges: All bridges pushed ✓');
 	}
 
-	async pushBridge(bridge: Bridge): Promise<void> {
+	/**
+	 * Push vault changes back to the git repo and push to remote.
+	 *
+	 * @param bridge         - The bridge to push.
+	 * @param commitMessage  - Optional commit message; auto-generated if omitted.
+	 * @param selectedFiles  - When provided, only these files (and their statuses)
+	 *                         are copied/removed and staged. Omit for a full push.
+	 */
+	async pushBridge(
+		bridge: Bridge,
+		commitMessage?: string,
+		selectedFiles?: ChangedFile[]
+	): Promise<void> {
 		bridge.status = 'syncing';
 		this.plugin.statusBar.update();
+		this.plugin.fileCommandBar?.update();
 
 		try {
 			// Validate branch
@@ -385,35 +448,59 @@ export class BridgeManager {
 				throw new Error(`Vault path does not exist: ${vaultPath}. Run a pull sync first.`);
 			}
 
-			// Copy vault → repo (reverse direction)
-			const stat = fs.statSync(vaultPath);
-			if (stat.isDirectory()) {
-				fs.cpSync(vaultPath, sourcePath, { recursive: true, force: true });
+			if (selectedFiles && selectedFiles.length > 0) {
+				// ── Selective push: copy / remove only the chosen files ───────────
+				const stagedPaths: string[] = [];
+
+				for (const { relPath, status } of selectedFiles) {
+					const vaultFile = path.join(vaultPath, relPath);
+					const repoFile  = path.join(sourcePath, relPath);
+
+					if (status === 'deleted') {
+						if (fs.existsSync(repoFile)) fs.unlinkSync(repoFile);
+					} else {
+						// modified or added
+						fs.mkdirSync(path.dirname(repoFile), { recursive: true });
+						fs.copyFileSync(vaultFile, repoFile);
+					}
+					// For `git add`, paths must be relative to the repo root
+					const repoRelPath = bridge.sourcePath
+						? path.join(bridge.sourcePath, relPath)
+						: relPath;
+					stagedPaths.push(repoRelPath);
+				}
+
+				const quoted = stagedPaths.map(p => `"${shellEsc(p)}"`).join(' ');
+				await execAsync(`git -C "${bridge.repoPath}" add -- ${quoted}`, { timeout: 15000 });
 			} else {
-				fs.copyFileSync(vaultPath, sourcePath);
+				// ── Full push: copy entire vault dir → repo ───────────────────────
+				const stat = fs.statSync(vaultPath);
+				if (stat.isDirectory()) {
+					fs.cpSync(vaultPath, sourcePath, { recursive: true, force: true });
+				} else {
+					fs.copyFileSync(vaultPath, sourcePath);
+				}
+				await execAsync(`git -C "${bridge.repoPath}" add -A`, { timeout: 15000 });
 			}
 
-			// Stage all changes
-			await execAsync(`git -C "${bridge.repoPath}" add -A`, { timeout: 15000 });
-
-			// Check if anything actually changed
-			const { stdout: statusOut } = await execAsync(
-				`git -C "${bridge.repoPath}" status --porcelain`,
+			// Check if anything actually got staged
+			const { stdout: diffOut } = await execAsync(
+				`git -C "${bridge.repoPath}" diff --cached --name-only`,
 				{ timeout: 15000 }
 			);
 
-			if (!statusOut.trim()) {
+			if (!diffOut.trim()) {
 				new Notice(`Vault Bridges: "${bridge.name}" — nothing to push, already up to date`);
 				bridge.status = 'ok';
-				bridge.isDirty = false;
-				this.recordManifest(bridge);
+				bridge.isDirty = this.checkDirty(bridge);
 				return;
 			}
 
-			// Commit and push
+			// Build commit message (user-supplied or auto-generated)
 			const timestamp = new Date().toLocaleString();
+			const rawMsg = commitMessage?.trim() || `Update from Obsidian vault (${timestamp})`;
 			await execAsync(
-				`git -C "${bridge.repoPath}" commit -m "Update from Obsidian vault (${timestamp})"`,
+				`git -C "${bridge.repoPath}" commit -m "${shellEsc(rawMsg)}"`,
 				{ timeout: 15000 }
 			);
 			await execAsync(
@@ -422,12 +509,15 @@ export class BridgeManager {
 			);
 
 			bridge.status = 'ok';
-			bridge.isDirty = false;
+			bridge.isDirty = this.checkDirty(bridge); // may still be dirty if partial push
 			bridge.lastPushed = new Date().toISOString();
 			bridge.lastSynced = bridge.lastPushed;
 			bridge.lastError = undefined;
-			this.recordManifest(bridge);
-			new Notice(`Vault Bridges: ✓ "${bridge.name}" pushed to ${bridge.branch}`);
+			// Re-record manifest only on full push (partial leaves remaining diffs intact)
+			if (!selectedFiles) this.recordManifest(bridge);
+
+			const fileCount = selectedFiles ? `${selectedFiles.length} file${selectedFiles.length !== 1 ? 's' : ''}` : 'all changes';
+			new Notice(`Vault Bridges: ✓ "${bridge.name}" — pushed ${fileCount} to ${bridge.branch}`);
 		} catch (err) {
 			bridge.status = 'error';
 			bridge.lastError = err instanceof Error ? err.message : String(err);
@@ -441,6 +531,7 @@ export class BridgeManager {
 		} finally {
 			await this.plugin.saveSettings();
 			this.plugin.statusBar.update();
+			this.plugin.fileCommandBar?.update();
 		}
 	}
 }
