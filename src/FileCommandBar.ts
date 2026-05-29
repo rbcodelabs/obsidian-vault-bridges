@@ -1,17 +1,25 @@
 import { WorkspaceLeaf, MarkdownView } from 'obsidian';
 import type VaultBridgesPlugin from '../main';
-import type { Bridge } from './types';
-import { PushCommitModal } from './PushCommitModal';
+import type { Bridge, ChangedFile } from './types';
 
 /**
  * FileCommandBar injects a slim action bar between the view header and the
  * editor content for every Markdown leaf whose open file lives inside a
  * vault bridge. The bar surfaces sync state and Pull / Push controls so
  * the user can act without leaving the document.
+ *
+ * When the bridge has pending changes a "● N changes ▾" pill is shown. Clicking
+ * it opens an inline popdown that lists each changed file with a checkbox so the
+ * user can cherry-pick which files to include in the next commit.
  */
 export class FileCommandBar {
-	/** Map from leaf.id to the injected bar element */
+	/** Map from leaf.id → the injected bar wrapper element */
 	private bars: Map<string, HTMLElement> = new Map();
+	/**
+	 * Map from leaf.id → the currently open popdown element (if any).
+	 * Only one popdown is open at a time per bar.
+	 */
+	private popdowns: Map<string, HTMLElement> = new Map();
 
 	constructor(private plugin: VaultBridgesPlugin) {
 		plugin.registerEvent(
@@ -29,18 +37,18 @@ export class FileCommandBar {
 
 	/**
 	 * Call after any bridge state change (dirty, status, timestamps, etc.)
-	 * to re-render all currently visible bars.
+	 * to re-render all currently visible bars without destroying open popdowns.
 	 */
 	update(): void {
 		this.refresh();
 	}
 
-	/** Remove all injected bars — call on plugin unload. */
+	/** Remove all injected bars and popdowns — call on plugin unload. */
 	destroy(): void {
-		for (const bar of this.bars.values()) {
-			bar.remove();
-		}
+		for (const bar of this.bars.values()) bar.remove();
+		for (const pd of this.popdowns.values()) pd.remove();
 		this.bars.clear();
+		this.popdowns.clear();
 	}
 
 	/**
@@ -89,6 +97,7 @@ export class FileCommandBar {
 	}
 
 	private removeBar(leafId: string): void {
+		this.closePopdown(leafId);
 		const existing = this.bars.get(leafId);
 		if (existing) {
 			existing.remove();
@@ -109,10 +118,10 @@ export class FileCommandBar {
 			this.bars.set(leafId, bar);
 		}
 
-		this.buildBarContent(bar, bridge);
+		this.buildBarContent(bar, bridge, leafId);
 	}
 
-	private buildBarContent(bar: HTMLElement, bridge: Bridge): void {
+	private buildBarContent(bar: HTMLElement, bridge: Bridge, leafId: string): void {
 		const { isDirty, status, lastError, lastPulled, lastPushed, branch, name } = bridge;
 		const isSyncing = status === 'syncing';
 		const isError   = status === 'error';
@@ -147,7 +156,9 @@ export class FileCommandBar {
 				attr: { title: lastError },
 			});
 		} else if (isDirty) {
-			info.createEl('span', { cls: 'vault-bridges-bar-status-label is-dirty', text: 'modified' });
+			// Show the changes pill instead of plain "modified" text
+			const changedFiles = this.plugin.bridgeManager.getChangedFiles(bridge);
+			this.buildChangesPill(info, bar, leafId, bridge, changedFiles);
 		} else {
 			const ts = lastPushed ?? lastPulled;
 			if (ts) {
@@ -172,26 +183,195 @@ export class FileCommandBar {
 		pullBtn.addEventListener('click', (e) => {
 			e.preventDefault();
 			e.stopPropagation();
+			this.closePopdown(leafId);
 			this.plugin.bridgeManager.syncBridge(bridge);
 		});
 
-		const pushBtnCls = isDirty
-			? 'vault-bridges-bar-btn is-cta'
-			: 'vault-bridges-bar-btn';
+		// "Push all" quick-action button (always visible on right)
+		const pushBtnCls = isDirty ? 'vault-bridges-bar-btn is-cta' : 'vault-bridges-bar-btn';
 		const pushBtn = actions.createEl('button', {
 			cls: pushBtnCls,
-			text: '↑ Push',
-			attr: { 'aria-label': `Commit and push to ${branch}` },
+			text: '↑ Push all',
+			attr: { 'aria-label': `Commit and push all changes to ${branch}` },
 		});
 		pushBtn.disabled = isSyncing;
 		pushBtn.addEventListener('click', (e) => {
 			e.preventDefault();
 			e.stopPropagation();
-			new PushCommitModal(this.plugin.app, bridge, (msg) => {
-				this.plugin.bridgeManager.pushBridge(bridge, msg || undefined);
-			}).open();
+			this.closePopdown(leafId);
+			this.plugin.bridgeManager.pushBridge(bridge);
 		});
 	}
+
+	// ── Changes pill & popdown ─────────────────────────────────────────────
+
+	/**
+	 * Renders the clickable "● N changes ▾" pill inside the info section.
+	 * Clicking it toggles the pending-changes popdown.
+	 */
+	private buildChangesPill(
+		info: HTMLElement,
+		bar: HTMLElement,
+		leafId: string,
+		bridge: Bridge,
+		changedFiles: ChangedFile[]
+	): void {
+		const count = changedFiles.length;
+		const label = count === 1 ? '1 change' : `${count} changes`;
+
+		const pill = info.createEl('button', {
+			cls: 'vault-bridges-changes-pill',
+			attr: { 'aria-label': 'Show pending changes', 'aria-expanded': 'false' },
+		});
+		pill.createEl('span', { text: `● ${label}` });
+		pill.createEl('span', { cls: 'vault-bridges-pill-chevron', text: ' ▾' });
+
+		pill.addEventListener('click', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+
+			if (this.popdowns.has(leafId)) {
+				this.closePopdown(leafId);
+				pill.setAttribute('aria-expanded', 'false');
+			} else {
+				pill.setAttribute('aria-expanded', 'true');
+				this.openPopdown(bar, leafId, bridge, changedFiles, () => {
+					pill.setAttribute('aria-expanded', 'false');
+				});
+			}
+		});
+	}
+
+	/**
+	 * Creates and attaches the pending-changes popdown below the bar.
+	 * @param onClose  Called when the popdown self-closes (outside click / Escape / push).
+	 */
+	private openPopdown(
+		bar: HTMLElement,
+		leafId: string,
+		bridge: Bridge,
+		changedFiles: ChangedFile[],
+		onClose: () => void
+	): void {
+		// Only one popdown per bar
+		this.closePopdown(leafId);
+
+		const pd = bar.createEl('div', { cls: 'vault-bridges-changes-popdown' });
+		this.popdowns.set(leafId, pd);
+
+		// ── Header ─────────────────────────────────────────────────────
+		const header = pd.createEl('div', { cls: 'vault-bridges-popdown-header' });
+		header.createEl('span', {
+			cls: 'vault-bridges-popdown-title',
+			text: `${changedFiles.length} pending change${changedFiles.length !== 1 ? 's' : ''}`,
+		});
+		const closeBtn = header.createEl('button', {
+			cls: 'vault-bridges-popdown-close',
+			text: '×',
+			attr: { 'aria-label': 'Close' },
+		});
+		closeBtn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			this.closePopdown(leafId);
+			onClose();
+		});
+
+		// ── File list with checkboxes ───────────────────────────────────
+		const list = pd.createEl('div', { cls: 'vault-bridges-popdown-list' });
+		const checkboxes: Map<string, HTMLInputElement> = new Map();
+
+		for (const cf of changedFiles) {
+			const row = list.createEl('label', { cls: 'vault-bridges-popdown-row' });
+
+			const cb = row.createEl('input', { attr: { type: 'checkbox' } }) as HTMLInputElement;
+			cb.checked = true;
+			checkboxes.set(cf.relPath, cb);
+
+			const badge = row.createEl('span', {
+				cls: `vault-bridges-change-badge is-${cf.status}`,
+				text: cf.status === 'modified' ? 'M' : cf.status === 'added' ? 'A' : 'D',
+				attr: { title: cf.status },
+			});
+
+			row.createEl('span', { cls: 'vault-bridges-popdown-filepath', text: cf.relPath });
+
+			// When checkbox changes, update the push button count
+			cb.addEventListener('change', () => updatePushBtn());
+
+			// Suppress click-through to the pill toggle
+			row.addEventListener('click', (e) => e.stopPropagation());
+
+			void badge; // used for side-effect (appended to row)
+		}
+
+		// ── Footer: commit message + push button ────────────────────────
+		const footer = pd.createEl('div', { cls: 'vault-bridges-popdown-footer' });
+
+		const msgInput = footer.createEl('input', {
+			cls: 'vault-bridges-popdown-message',
+			attr: {
+				type: 'text',
+				placeholder: 'Commit message (optional)',
+				'aria-label': 'Commit message',
+			},
+		}) as HTMLInputElement;
+
+		const pushBtn = footer.createEl('button', {
+			cls: 'vault-bridges-bar-btn is-cta vault-bridges-popdown-push',
+			text: `↑ Push selected (${changedFiles.length})`,
+		});
+
+		const updatePushBtn = () => {
+			const selectedCount = [...checkboxes.values()].filter(c => c.checked).length;
+			pushBtn.textContent = `↑ Push selected (${selectedCount})`;
+			pushBtn.disabled = selectedCount === 0;
+		};
+
+		pushBtn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			const selected = changedFiles.filter(cf => checkboxes.get(cf.relPath)?.checked);
+			if (selected.length === 0) return;
+
+			const msg = msgInput.value.trim() || undefined;
+			this.closePopdown(leafId);
+			onClose();
+			this.plugin.bridgeManager.pushBridge(bridge, msg, selected);
+		});
+
+		// ── Keyboard / outside-click dismissal ─────────────────────────
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') {
+				this.closePopdown(leafId);
+				onClose();
+				document.removeEventListener('keydown', onKeyDown);
+			}
+		};
+		document.addEventListener('keydown', onKeyDown);
+
+		// Delay so the current click event doesn't immediately re-trigger close
+		const onOutsideClick = (e: MouseEvent) => {
+			if (!pd.contains(e.target as Node) && !bar.contains(e.target as Node)) {
+				this.closePopdown(leafId);
+				onClose();
+				document.removeEventListener('mousedown', onOutsideClick);
+				document.removeEventListener('keydown', onKeyDown);
+			}
+		};
+		setTimeout(() => document.addEventListener('mousedown', onOutsideClick), 0);
+
+		// Focus the message input for keyboard convenience
+		setTimeout(() => msgInput.focus(), 50);
+	}
+
+	private closePopdown(leafId: string): void {
+		const pd = this.popdowns.get(leafId);
+		if (pd) {
+			pd.remove();
+			this.popdowns.delete(leafId);
+		}
+	}
+
+	// ── Utilities ──────────────────────────────────────────────────────────
 
 	/** Returns a human-friendly relative time string (e.g. "3 min ago"). */
 	private relativeTime(isoString: string): string {
