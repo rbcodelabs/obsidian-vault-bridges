@@ -9,7 +9,7 @@ export interface Bridge {
 	lastSynced?: string;   // ISO timestamp (kept for backward compat, mirrors lastPulled)
 	lastPulled?: string;   // ISO timestamp of last successful pull
 	lastPushed?: string;   // ISO timestamp of last successful push
-	fileManifest?: Record<string, number>; // vault-relative path → mtimeMs, recorded after each pull
+	fileManifest?: Record<string, string>; // vault-relative path → SHA-1 hash, recorded after each pull
 	isDirty?: boolean;     // true if vault files have been modified since last pull
 	status: 'ok' | 'error' | 'syncing' | 'unlinked' | 'unknown';
 	lastError?: string;
@@ -28,6 +28,12 @@ export const DEFAULT_SETTINGS: VaultBridgesSettings = {
 	claudePath: '/opt/homebrew/bin/claude',
 	claudeEnabled: true,
 };
+
+export interface ChangedFile {
+	/** Path relative to the bridge's vaultPath (and to the repo's sourcePath) */
+	relPath: string;
+	status: 'modified' | 'added' | 'deleted';
+}
 
 export type GitErrorType = 'conflict' | 'pull_rejected' | 'push_rejected' | 'auth_failure' | 'network_error' | 'generic';
 

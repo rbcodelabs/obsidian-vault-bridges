@@ -4,6 +4,7 @@ import { BridgeManager } from './src/BridgeManager';
 import { VaultBridgesSettingsTab } from './src/SettingsTab';
 import { StatusBarManager } from './src/StatusBar';
 import { VaultBridgesAPI } from './src/VaultBridgesAPI';
+import { FileCommandBar } from './src/FileCommandBar';
 
 export type { VaultBridgesAPI } from './src/VaultBridgesAPI';
 export type { AddBridgeOptions } from './src/VaultBridgesAPI';
@@ -14,6 +15,8 @@ export default class VaultBridgesPlugin extends Plugin {
 	statusBar!: StatusBarManager;
 	/** Public API for other plugins. See src/VaultBridgesAPI.ts for full docs. */
 	api!: VaultBridgesAPI;
+	fileCommandBar!: FileCommandBar;
+	settingsTab?: VaultBridgesSettingsTab;
 
 	async onload() {
 		await this.loadSettings();
@@ -21,8 +24,10 @@ export default class VaultBridgesPlugin extends Plugin {
 		this.bridgeManager = new BridgeManager(this);
 		this.statusBar = new StatusBarManager(this);
 		this.api = new VaultBridgesAPI(this);
+		this.fileCommandBar = new FileCommandBar(this);
 
-		this.addSettingTab(new VaultBridgesSettingsTab(this.app, this));
+		this.settingsTab = new VaultBridgesSettingsTab(this.app, this);
+		this.addSettingTab(this.settingsTab);
 
 		this.addCommand({
 			id: 'sync-all-bridges',
@@ -58,6 +63,23 @@ export default class VaultBridgesPlugin extends Plugin {
 				this.bridgeManager.onVaultFileModified(file.path);
 			})
 		);
+		this.registerEvent(
+			this.app.vault.on('rename', (file, oldPath) => {
+				// Check both sides: old path (now deleted from bridge) and new path (added)
+				this.bridgeManager.onVaultFileModified(oldPath);
+				this.bridgeManager.onVaultFileModified(file.path);
+			})
+		);
+		this.registerEvent(
+			this.app.vault.on('delete', (file) => {
+				this.bridgeManager.onVaultFileModified(file.path);
+			})
+		);
+		this.registerEvent(
+			this.app.vault.on('create', (file) => {
+				this.bridgeManager.onVaultFileModified(file.path);
+			})
+		);
 
 		console.log('Vault Bridges: loaded');
 	}
@@ -90,6 +112,7 @@ export default class VaultBridgesPlugin extends Plugin {
 	}
 
 	onunload() {
+		this.fileCommandBar?.destroy();
 		console.log('Vault Bridges: unloaded');
 	}
 
