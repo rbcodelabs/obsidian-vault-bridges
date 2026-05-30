@@ -473,9 +473,17 @@ export class BridgeManager {
 				const quoted = stagedPaths.map(p => `"${shellEsc(p)}"`).join(' ');
 				await execAsync(`git -C "${bridge.repoPath}" add -- ${quoted}`, { timeout: 15000 });
 			} else {
-				// ── Full push: copy entire vault dir → repo ───────────────────────
+				// ── Full push: sync vault dir → repo ─────────────────────────────
 				const stat = fs.statSync(vaultPath);
 				if (stat.isDirectory()) {
+					// Delete repo files that were removed or renamed away in the vault.
+					// cpSync only adds/overwrites; it never removes, so without this step
+					// deleted and renamed files would be permanently orphaned in the repo.
+					const deletedFiles = this.getChangedFiles(bridge).filter(cf => cf.status === 'deleted');
+					for (const cf of deletedFiles) {
+						const repoFile = path.join(sourcePath, cf.relPath);
+						if (fs.existsSync(repoFile)) fs.unlinkSync(repoFile);
+					}
 					fs.cpSync(vaultPath, sourcePath, { recursive: true, force: true });
 				} else {
 					fs.copyFileSync(vaultPath, sourcePath);
