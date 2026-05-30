@@ -10,6 +10,7 @@ export default class VaultBridgesPlugin extends Plugin {
 	bridgeManager!: BridgeManager;
 	statusBar!: StatusBarManager;
 	fileCommandBar!: FileCommandBar;
+	settingsTab?: VaultBridgesSettingsTab;
 
 	async onload() {
 		await this.loadSettings();
@@ -18,7 +19,8 @@ export default class VaultBridgesPlugin extends Plugin {
 		this.statusBar = new StatusBarManager(this);
 		this.fileCommandBar = new FileCommandBar(this);
 
-		this.addSettingTab(new VaultBridgesSettingsTab(this.app, this));
+		this.settingsTab = new VaultBridgesSettingsTab(this.app, this);
+		this.addSettingTab(this.settingsTab);
 
 		this.addCommand({
 			id: 'sync-all-bridges',

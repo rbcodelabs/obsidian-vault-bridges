@@ -31,6 +31,17 @@ export class BridgeManager {
 		return (this.plugin.app.vault.adapter as any).basePath as string;
 	}
 
+	/**
+	 * Re-renders the settings tab if it is currently open. Guards with
+	 * isConnected so nothing is done when the settings modal is closed.
+	 */
+	private refreshSettingsTab(): void {
+		const tab = this.plugin.settingsTab;
+		if (tab?.containerEl.isConnected) {
+			tab.display();
+		}
+	}
+
 	// ─── Manifest / dirty tracking ────────────────────────────────────────────
 
 	private buildManifest(basePath: string, currentPath: string): Record<string, string> {
@@ -303,6 +314,7 @@ export class BridgeManager {
 			await this.plugin.saveSettings();
 			this.plugin.statusBar.update();
 			this.plugin.fileCommandBar?.update();
+			this.refreshSettingsTab();
 		}
 	}
 
@@ -532,6 +544,7 @@ export class BridgeManager {
 			await this.plugin.saveSettings();
 			this.plugin.statusBar.update();
 			this.plugin.fileCommandBar?.update();
+			this.refreshSettingsTab();
 		}
 	}
 }
