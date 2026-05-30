@@ -145,6 +145,9 @@ export class AddBridgeModal extends Modal {
 
 		await this.plugin.saveSettings();
 		this.plugin.statusBar.update();
+		// Register (or refresh) per-bridge commands so the palette is up-to-date
+		// immediately — no Obsidian restart required.
+		this.plugin.registerBridgeCommands(completeBridge);
 		this.onSave();
 	}
 

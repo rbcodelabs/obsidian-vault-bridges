@@ -1,14 +1,20 @@
 import { Plugin } from 'obsidian';
-import { VaultBridgesSettings, DEFAULT_SETTINGS } from './src/types';
+import { VaultBridgesSettings, DEFAULT_SETTINGS, Bridge } from './src/types';
 import { BridgeManager } from './src/BridgeManager';
 import { VaultBridgesSettingsTab } from './src/SettingsTab';
 import { StatusBarManager } from './src/StatusBar';
+import { VaultBridgesAPI } from './src/VaultBridgesAPI';
 import { FileCommandBar } from './src/FileCommandBar';
+
+export type { VaultBridgesAPI } from './src/VaultBridgesAPI';
+export type { AddBridgeOptions } from './src/VaultBridgesAPI';
 
 export default class VaultBridgesPlugin extends Plugin {
 	settings!: VaultBridgesSettings;
 	bridgeManager!: BridgeManager;
 	statusBar!: StatusBarManager;
+	/** Public API for other plugins. See src/VaultBridgesAPI.ts for full docs. */
+	api!: VaultBridgesAPI;
 	fileCommandBar!: FileCommandBar;
 	settingsTab?: VaultBridgesSettingsTab;
 
@@ -17,6 +23,7 @@ export default class VaultBridgesPlugin extends Plugin {
 
 		this.bridgeManager = new BridgeManager(this);
 		this.statusBar = new StatusBarManager(this);
+		this.api = new VaultBridgesAPI(this);
 		this.fileCommandBar = new FileCommandBar(this);
 
 		this.settingsTab = new VaultBridgesSettingsTab(this.app, this);
@@ -39,6 +46,11 @@ export default class VaultBridgesPlugin extends Plugin {
 			name: 'Push All Bridges',
 			callback: () => this.bridgeManager.pushAll(),
 		});
+
+		// Register pull + push commands for each existing bridge
+		for (const bridge of this.settings.bridges) {
+			this.registerBridgeCommands(bridge);
+		}
 
 		// Auto-sync on startup after layout is ready
 		this.app.workspace.onLayoutReady(() => {
@@ -70,6 +82,33 @@ export default class VaultBridgesPlugin extends Plugin {
 		);
 
 		console.log('Vault Bridges: loaded');
+	}
+
+	/**
+	 * Registers (or re-registers) the per-bridge Pull and Push commands.
+	 * Safe to call on an existing id — Obsidian replaces the previous registration,
+	 * so calling this after a bridge name edit keeps the palette label fresh.
+	 */
+	registerBridgeCommands(bridge: Bridge): void {
+		const id = bridge.id;
+
+		this.addCommand({
+			id: `pull-bridge-${id}`,
+			name: `Pull "${bridge.name}"`,
+			callback: () => {
+				const b = this.settings.bridges.find(b => b.id === id);
+				if (b) this.bridgeManager.syncBridge(b);
+			},
+		});
+
+		this.addCommand({
+			id: `push-bridge-${id}`,
+			name: `Push "${bridge.name}"`,
+			callback: () => {
+				const b = this.settings.bridges.find(b => b.id === id);
+				if (b) this.bridgeManager.pushBridge(b);
+			},
+		});
 	}
 
 	onunload() {
