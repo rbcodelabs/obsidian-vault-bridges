@@ -70,4 +70,23 @@ test.describe('Vault Bridges UI', () => {
 		await page.waitForTimeout(150);
 		await expect(page).toHaveScreenshot('error-state.png', { fullPage: true });
 	});
+
+	test('command bar — pill button (popdown closed)', async ({ page }) => {
+		await page.setViewportSize({ width: 920, height: 560 });
+		await page.goto(harnessUrl('command-bar-pill'));
+		// Wait for the bar and pill to render
+		await page.waitForSelector('.vault-bridges-command-bar');
+		await page.waitForSelector('.vault-bridges-changes-pill');
+		await page.waitForTimeout(200);
+		await expect(page).toHaveScreenshot('command-bar-pill.png', { fullPage: true });
+	});
+
+	test('command bar — popdown open', async ({ page }) => {
+		await page.setViewportSize({ width: 920, height: 700 });
+		await page.goto(harnessUrl('command-bar-popdown'));
+		// The harness clicks the pill for us — wait for popdown to appear
+		await page.waitForSelector('.vault-bridges-changes-popdown');
+		await page.waitForTimeout(200);
+		await expect(page).toHaveScreenshot('command-bar-popdown.png', { fullPage: true });
+	});
 });

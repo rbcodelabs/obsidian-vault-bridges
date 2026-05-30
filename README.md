@@ -94,6 +94,8 @@ When you open any file that lives inside a bridge destination, a slim command ba
 
 ### Bar States
 
+![Command bar showing the "● 3 changes ▾" pill button on a dirty bridge](docs/screenshot-command-bar-pill.png)
+
 | Icon | State | What it means |
 |---|---|---|
 | `✓` | Clean | All files match the last pull; nothing to push |
@@ -106,6 +108,8 @@ In the clean state the bar also shows the last-synced time (e.g. "synced 3 min a
 ### Pending-Changes Pill
 
 When the bridge is dirty, the pill replaces the status label on the left side of the bar. Clicking it opens an inline popdown:
+
+![Open popdown showing file list with M/A/D badges, checkboxes, commit message field, and Push selected button](docs/screenshot-command-bar-popdown.png)
 
 - **File list with badges** — each changed file is listed with an `M` (modified), `A` (added), or `D` (deleted) badge and a checkbox checked by default
 - **Commit message field** — optional; leave blank to get an auto-generated timestamped message
