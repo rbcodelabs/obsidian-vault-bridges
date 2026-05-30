@@ -257,11 +257,61 @@ export class Modal {
 	onClose(): void {}
 }
 
+// ─── MarkdownView / WorkspaceLeaf (needed by FileCommandBar) ─────────────────
+
+export class MarkdownView {
+	containerEl: HTMLElement;
+	file: { path: string } | null = null;
+
+	constructor() {
+		this.containerEl = document.createElement('div');
+		this.containerEl.className = 'workspace-leaf-content';
+	}
+}
+
+export class WorkspaceLeaf {
+	id: string;
+	view: MarkdownView;
+
+	constructor(id: string, view: MarkdownView) {
+		this.id = id;
+		this.view = view;
+	}
+}
+
+// ─── Global createEl (Obsidian provides this as a window-level function) ──────
+
+declare global {
+	// eslint-disable-next-line no-var
+	var createEl: <K extends keyof HTMLElementTagNameMap>(
+		tag: K,
+		opts?: CreateElOptions | string,
+	) => HTMLElementTagNameMap[K];
+}
+
+window.createEl = function <K extends keyof HTMLElementTagNameMap>(
+	tag: K,
+	opts?: CreateElOptions | string,
+): HTMLElementTagNameMap[K] {
+	const el = document.createElement(tag);
+	applyCreateEl(el, opts);
+	return el;
+};
+
 // ─── Misc exports ─────────────────────────────────────────────────────────────
+
+type LeafCallback = (leaf: WorkspaceLeaf) => void;
 
 export const mockApp = {
 	vault: { adapter: { basePath: '/mock/vault' } },
-	workspace: {},
+	workspace: {
+		/** Harness tests can push fake leaves here before calling FileCommandBar.refresh() */
+		_leaves: [] as WorkspaceLeaf[],
+		on(_event: string, _cb: () => void) { return {}; },
+		iterateAllLeaves(cb: LeafCallback) {
+			for (const leaf of mockApp.workspace._leaves) cb(leaf);
+		},
+	},
 };
 
 export class Notice {

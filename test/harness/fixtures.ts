@@ -1,4 +1,4 @@
-import type { Bridge, GitFixPlan } from '../../src/types';
+import type { Bridge, ChangedFile, GitFixPlan } from '../../src/types';
 
 const now = Date.now();
 
@@ -39,6 +39,26 @@ export const fixtureBridges: Bridge[] = [
 ];
 
 export const emptyBridges: Bridge[] = [];
+
+// Bridge with pending changes — used for FileCommandBar screenshot scenarios
+export const dirtyBridge: Bridge = {
+	id: 'bridge-work-docs-dirty',
+	name: 'Work Docs',
+	repoPath: '/mock/repos/work-docs',
+	sourcePath: 'docs',
+	vaultPath: 'Work/Docs',
+	branch: 'main',
+	autoSync: true,
+	status: 'ok',
+	isDirty: true,
+	lastSynced: new Date(Date.now() - 4 * 60 * 1000).toISOString(),
+};
+
+export const fixtureChangedFiles: ChangedFile[] = [
+	{ relPath: 'architecture/decisions/001-use-postgres.md', status: 'modified' },
+	{ relPath: 'architecture/decisions/002-event-sourcing.md', status: 'added' },
+	{ relPath: 'architecture/decisions/000-draft.md', status: 'deleted' },
+];
 
 export const fixturePlan: GitFixPlan = {
 	summary:
