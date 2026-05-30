@@ -51,6 +51,23 @@ export default class VaultBridgesPlugin extends Plugin {
 				this.bridgeManager.onVaultFileModified(file.path);
 			})
 		);
+		this.registerEvent(
+			this.app.vault.on('rename', (file, oldPath) => {
+				// Check both sides: old path (now deleted from bridge) and new path (added)
+				this.bridgeManager.onVaultFileModified(oldPath);
+				this.bridgeManager.onVaultFileModified(file.path);
+			})
+		);
+		this.registerEvent(
+			this.app.vault.on('delete', (file) => {
+				this.bridgeManager.onVaultFileModified(file.path);
+			})
+		);
+		this.registerEvent(
+			this.app.vault.on('create', (file) => {
+				this.bridgeManager.onVaultFileModified(file.path);
+			})
+		);
 
 		console.log('Vault Bridges: loaded');
 	}
