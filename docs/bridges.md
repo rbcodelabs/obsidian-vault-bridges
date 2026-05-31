@@ -18,11 +18,25 @@ The result is a set of real files in your vault that reflect the state of the re
 
 ### Push (vault → repo)
 
-1. Copies files from the vault destination back to the source path in the repo
+There are two ways to push: **Push all** and **Push selected**.
+
+**Push all** (the ⬆ button in the settings panel, **↑ Push all** in the command bar, or `Vault Bridges: Push All Bridges`):
+
+1. Copies all files from the vault destination back to the source path in the repo
 2. Stages all changes with `git add -A`
 3. Checks `git status --porcelain` — if nothing changed, the commit and push are skipped
 4. Commits with an auto-generated message: `Update from Obsidian vault (<timestamp>)`
 5. Pushes to `origin <branch>`
+
+**Push selected** (via the "● N changes ▾" pill in the in-editor command bar):
+
+1. Opens a popdown listing each modified (`M`), added (`A`), or deleted (`D`) file with a checkbox
+2. You uncheck any files you want to hold back, and optionally type a custom commit message
+3. Only the checked files are copied back to the repo
+4. Stages only those files, commits, and pushes to `origin <branch>`
+5. The bridge remains dirty if any files were left unchecked; they will appear again in the next push
+
+See [In-Editor Command Bar](../README.md#in-editor-command-bar) for full details on the pill and popdown UI.
 
 ---
 
@@ -103,12 +117,22 @@ For each bridge, sync:
 
 ### What "push" does
 
+**Push all** (the default; stages everything):
+
 1. Validates the branch name
 2. Checks the vault destination path exists
-3. Copies files from the vault destination back to the repo source path
+3. Copies all files from the vault destination back to the repo source path
 4. Stages all changes with `git add -A`
 5. Checks `git status --porcelain` — if nothing has changed, skips the commit and push
 6. Commits with the message `Update from Obsidian vault (<timestamp>)` and pushes to `origin <branch>`
+
+**Push selected** (only the files you checked in the popdown):
+
+1. Validates the branch name
+2. Copies only the selected files back to the repo source path
+3. Stages only those files
+4. Commits with your custom message (or the auto-generated timestamp) and pushes to `origin <branch>`
+5. Any unchecked files remain in the vault but are not staged — the bridge stays dirty until they are pushed or the bridge is re-pulled
 
 ### What bridges do NOT do
 
@@ -124,8 +148,8 @@ Files at the vault destination are real copies, not symlinks. You can edit them 
 
 Workflow for making edits:
 
-1. Edit the file in your vault
-2. Hit **Push** to copy your changes back to the repo and commit them
+1. Edit the file in your vault. The command bar at the top of the file shows a "● N changes ▾" pill as soon as a file is saved — the count updates in real time with each save.
+2. Click **↑ Push all** to commit and push every changed file at once, or click the pill to open the popdown and choose which files to include in the commit.
 
 **Overwrite protection:** The plugin tracks file modification times since the last pull. If you try to Pull with unsaved vault edits, a warning modal appears with three options:
 - **Push then Pull** — commits your edits and pushes them first, then pulls the latest (the safe path)

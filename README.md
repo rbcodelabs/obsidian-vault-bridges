@@ -32,6 +32,10 @@ Vault Bridges adds a third option: a managed, bidirectional bridge that stays fr
 
 - **Bidirectional sync** — pull from Git into your vault, or push edits from your vault back to the repo with a commit and push
 - **Real file copies** — files are copied into the vault (not symlinked), so Obsidian fully indexes, searches, and links them
+- **In-editor command bar** — a slim bar appears at the top of every bridged file with Pull and Push controls so you never have to leave the document
+- **Pending-changes pill** — when you have unsaved edits, a "● N changes ▾" pill shows the exact count; click it to see which files changed and selectively choose which ones to include in your next commit
+- **Selective push** — check or uncheck individual files in the popdown, add an optional commit message, and push only what you want
+- **Real-time change count** — the pill count updates on every file save, not just when a bridge first becomes dirty
 - **Dirty detection** — tracks file modifications since the last pull; warns before overwriting unsaved vault edits with a modal offering Push then Pull, Pull anyway, or Cancel
 - **Safe auto-pull on startup** — skips dirty bridges on startup and notifies you instead of silently overwriting edits
 - **Automatic legacy cleanup** — any old symlinks at a bridge destination are automatically replaced with real file copies on first sync
@@ -76,9 +80,48 @@ Vault Bridges adds a third option: a managed, bidirectional bridge that stays fr
 
 Your files now appear at `Work/ADRs` inside your vault as real, fully-indexed copies.
 
-**To pull updates:** click the ⬇ (arrow-down-circle) button next to a bridge, or use **Pull All** / the `Vault Bridges: Sync All Bridges` command.
+**To pull updates:** click **↓ Pull** in the command bar at the top of any bridged file, or use the ⬇ button in Settings → Vault Bridges, or run `Vault Bridges: Sync All Bridges` from the command palette.
 
-**To push edits back to Git:** click the ⬆ (arrow-up-circle) button next to a bridge. The plugin copies your vault files back to the repo, then runs `git add -A && git commit && git push origin <branch>`.
+**To push all edits back to Git:** click **↑ Push all** in the command bar, or use the ⬆ button in the settings panel. This commits and pushes every changed file in one shot.
+
+**To push selected files only:** click the **"● N changes ▾"** pill in the command bar. A popdown lists each modified, added, or deleted file with a checkbox. Uncheck any files you want to hold back, add an optional commit message, then click **Push selected**.
+
+---
+
+## In-Editor Command Bar
+
+When you open any file that lives inside a bridge destination, a slim command bar appears between the file title and the editor content. It shows the bridge's current state and gives you Pull and Push controls without leaving the document.
+
+### Bar States
+
+![Command bar showing the "● 3 changes ▾" pill button on a dirty bridge](docs/screenshot-command-bar-pill.png)
+
+| Icon | State | What it means |
+|---|---|---|
+| `✓` | Clean | All files match the last pull; nothing to push |
+| `● N changes ▾` | Dirty | N files have been modified, added, or deleted since the last pull |
+| `↻` | Syncing | A pull or push is in progress |
+| `✕` | Error | The last operation failed; the error message is shown inline |
+
+In the clean state the bar also shows the last-synced time (e.g. "synced 3 min ago") with the exact timestamp on hover.
+
+### Pending-Changes Pill
+
+When the bridge is dirty, the pill replaces the status label on the left side of the bar. Clicking it opens an inline popdown:
+
+![Open popdown showing file list with M/A/D badges, checkboxes, commit message field, and Push selected button](docs/screenshot-command-bar-popdown.png)
+
+- **File list with badges** — each changed file is listed with an `M` (modified), `A` (added), or `D` (deleted) badge and a checkbox checked by default
+- **Commit message field** — optional; leave blank to get an auto-generated timestamped message
+- **Push selected button** — the button label shows how many files are currently checked; it updates live as you check and uncheck files
+
+Click outside the popdown, press Escape, or click the pill again to dismiss without pushing.
+
+### Push all vs. Push selected
+
+The **↑ Push all** button on the right side of the bar always commits and pushes every changed file immediately, the same as the ⬆ button in the settings panel. Use this when you want a fast one-click commit of everything.
+
+**Push selected** (via the pill popdown) is for when you want to review the diff list, exclude certain files from the commit, or write a custom commit message.
 
 ---
 
@@ -94,19 +137,21 @@ Your files now appear at `Work/ADRs` inside your vault as real, fully-indexed co
 
 | Field | Required | Description |
 |---|---|---|
-| **Name** | ✅ | Display label for this bridge |
-| **Local repo path** | ✅ | Absolute path to the git repo root on your machine (must already be cloned) |
+| **Name** | Yes | Display label for this bridge |
+| **Local repo path** | Yes | Absolute path to the git repo root on your machine (must already be cloned) |
 | **Source subfolder** | — | Subfolder within the repo to copy. Leave blank to copy the entire repo root |
-| **Vault destination path** | ✅ | Relative path inside your vault where files will be copied |
-| **Branch** | ✅ | Git branch to pull from and push to (default: `main`) |
+| **Vault destination path** | Yes | Relative path inside your vault where files will be copied |
+| **Branch** | Yes | Git branch to pull from and push to (default: `main`) |
 | **Auto sync on startup** | — | Pull this specific bridge when Obsidian opens |
 
 ### Per-Bridge Controls
 
+The settings panel has per-bridge buttons. The same actions are available faster from the in-editor command bar when you have a bridged file open.
+
 | Button | Action |
 |---|---|
 | ⬇ (arrow-down-circle) | **Pull** — `git pull` then copy repo files into the vault |
-| ⬆ (arrow-up-circle) | **Push** — copy vault files back to the repo, then commit and push |
+| ⬆ (arrow-up-circle) | **Push all** — copy all changed vault files back to the repo, commit, and push |
 | Pencil | Edit this bridge's configuration |
 | Trash | Remove this bridge (does not delete vault files) |
 
@@ -130,8 +175,10 @@ Access via **Cmd/Ctrl+P**:
 | Command | Description |
 |---|---|
 | `Vault Bridges: Sync All Bridges` | Pull all bridges (git pull + copy files into vault) |
-| `Vault Bridges: Push All Bridges` | Push all bridges (copy vault files to repo, commit, and push) |
-| `Vault Bridges: Rebuild All Links` | Re-copy all files from repos into the vault — useful after moving the vault or if files get out of sync |
+| `Vault Bridges: Push All Bridges` | Push all bridges (copy vault files to repo, commit, and push all changes) |
+| `Vault Bridges: Rebuild All Copies` | Re-copy all files from repos into the vault — useful after moving the vault or if files get out of sync |
+
+Individual bridge pull and push are also available from the **Settings → Vault Bridges** panel and from the **in-editor command bar** when a bridged file is open.
 
 ### Per-bridge commands
 
@@ -200,6 +247,7 @@ import type { VaultBridgesAPI, AddBridgeOptions } from 'vault-bridges/src/VaultB
 - **No mobile support** — requires local filesystem access not available on Obsidian Mobile.
 - **Vault move** — if you move your vault, run `Vault Bridges: Rebuild All Copies` to re-copy files at the new location.
 - **Obsidian Git coexistence** — if your vault is itself a git repo managed by Obsidian Git, add your bridge destination paths to the vault's `.gitignore` to prevent double-tracking.
+- **The command bar only appears for bridged files** — opening a regular vault note (outside any bridge destination) shows no bar.
 
 ---
 
