@@ -496,7 +496,13 @@ export class BridgeManager {
 						const repoFile = path.join(sourcePath, cf.relPath);
 						if (fs.existsSync(repoFile)) fs.unlinkSync(repoFile);
 					}
-					fs.cpSync(vaultPath, sourcePath, { recursive: true, force: true });
+					fs.cpSync(vaultPath, sourcePath, {
+						recursive: true,
+						force: true,
+						filter: (src: string) =>
+							path.basename(src) !== '.git' &&
+							!fs.lstatSync(src).isSymbolicLink(),
+					});
 				} else {
 					fs.copyFileSync(vaultPath, sourcePath);
 				}
