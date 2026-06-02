@@ -1,4 +1,4 @@
-import { WorkspaceLeaf, MarkdownView } from 'obsidian';
+import { WorkspaceLeaf, MarkdownView, setIcon } from 'obsidian';
 import type VaultBridgesPlugin from '../main';
 import type { Bridge, ChangedFile } from './types';
 
@@ -294,6 +294,32 @@ export class FileCommandBar {
 			});
 
 			row.createEl('span', { cls: 'vault-bridges-popdown-filepath', text: cf.relPath });
+
+			// Open-in-new-tab button (right side of row)
+			const openBtn = row.createEl('button', {
+				cls: 'vault-bridges-popdown-open-btn',
+				attr: {
+					type: 'button',
+					'aria-label': cf.status === 'deleted'
+						? `${cf.relPath} (deleted — cannot open)`
+						: `Open ${cf.relPath} in new tab`,
+					title: cf.status === 'deleted' ? 'File deleted' : 'Open in new tab',
+				},
+			});
+			setIcon(openBtn, 'arrow-up-right');
+			if (cf.status === 'deleted') {
+				openBtn.disabled = true;
+			} else {
+				openBtn.addEventListener('click', (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					const fullPath = bridge.vaultPath + '/' + cf.relPath;
+					const vaultFile = this.plugin.app.vault.getFileByPath(fullPath);
+					if (vaultFile) {
+						this.plugin.app.workspace.getLeaf('tab').openFile(vaultFile);
+					}
+				});
+			}
 
 			// When checkbox changes, update the push button count
 			cb.addEventListener('change', () => updatePushBtn());
