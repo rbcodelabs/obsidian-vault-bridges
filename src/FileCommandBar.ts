@@ -187,12 +187,16 @@ export class FileCommandBar {
 			this.plugin.bridgeManager.syncBridge(bridge);
 		});
 
-		// "Push all" quick-action button (always visible on right)
+		// "Push all" / "Open PR" quick-action button (always visible on right)
 		const pushBtnCls = isDirty ? 'vault-bridges-bar-btn is-cta' : 'vault-bridges-bar-btn';
+		const pushBtnLabel = bridge.prMode ? '↑ Open PR' : '↑ Push all';
+		const pushBtnAriaLabel = bridge.prMode
+			? `Create a PR with all changes against ${branch}`
+			: `Commit and push all changes to ${branch}`;
 		const pushBtn = actions.createEl('button', {
 			cls: pushBtnCls,
-			text: '↑ Push all',
-			attr: { 'aria-label': `Commit and push all changes to ${branch}` },
+			text: pushBtnLabel,
+			attr: { 'aria-label': pushBtnAriaLabel },
 		});
 		pushBtn.disabled = isSyncing;
 		pushBtn.addEventListener('click', (e) => {
@@ -316,14 +320,15 @@ export class FileCommandBar {
 			},
 		}) as HTMLInputElement;
 
+		const pushVerb = bridge.prMode ? 'Open PR' : 'Push selected';
 		const pushBtn = footer.createEl('button', {
 			cls: 'vault-bridges-bar-btn is-cta vault-bridges-popdown-push',
-			text: `↑ Push selected (${changedFiles.length})`,
+			text: `↑ ${pushVerb} (${changedFiles.length})`,
 		});
 
 		const updatePushBtn = () => {
 			const selectedCount = [...checkboxes.values()].filter(c => c.checked).length;
-			pushBtn.textContent = `↑ Push selected (${selectedCount})`;
+			pushBtn.textContent = `↑ ${pushVerb} (${selectedCount})`;
 			pushBtn.disabled = selectedCount === 0;
 		};
 
