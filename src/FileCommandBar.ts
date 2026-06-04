@@ -187,12 +187,16 @@ export class FileCommandBar {
 			this.plugin.bridgeManager.syncBridge(bridge);
 		});
 
-		// "Push all" quick-action button (always visible on right)
+		// "Push all" / "Open PR" quick-action button (always visible on right)
 		const pushBtnCls = isDirty ? 'vault-bridges-bar-btn is-cta' : 'vault-bridges-bar-btn';
+		const pushBtnLabel = bridge.prMode ? '↑ Open PR' : '↑ Push all';
+		const pushBtnAriaLabel = bridge.prMode
+			? `Create a PR with all changes against ${branch}`
+			: `Commit and push all changes to ${branch}`;
 		const pushBtn = actions.createEl('button', {
 			cls: pushBtnCls,
-			text: '↑ Push all',
-			attr: { 'aria-label': `Commit and push all changes to ${branch}` },
+			text: pushBtnLabel,
+			attr: { 'aria-label': pushBtnAriaLabel },
 		});
 		pushBtn.disabled = isSyncing;
 		pushBtn.addEventListener('click', (e) => {
@@ -200,6 +204,71 @@ export class FileCommandBar {
 			e.stopPropagation();
 			this.closePopdown(leafId);
 			this.plugin.bridgeManager.pushBridge(bridge);
+		});
+
+		// ── PR panel (shown when a PR is open) ──────────────────────────
+		if (bridge.lastPrUrl) {
+			this.buildPrPanel(bar, bridge);
+		}
+	}
+
+	private buildPrPanel(bar: HTMLElement, bridge: Bridge): void {
+		const prUrl = bridge.lastPrUrl!;
+		// Extract PR number from URL for display
+		const prNum = prUrl.match(/\/pull\/(\d+)/)?.[1];
+		const label = prNum ? `PR #${prNum}` : 'PR open';
+
+		const panel = bar.createEl('div', { cls: 'vault-bridges-pr-panel' });
+
+		// Status badge
+		const status = bridge.prStatus ?? 'open';
+		const statusText = status === 'checking' ? '…' : status;
+		panel.createEl('span', {
+			cls: `vault-bridges-pr-status is-${status}`,
+			text: statusText,
+			attr: { 'aria-label': `PR status: ${status}` },
+		});
+
+		panel.createEl('span', { cls: 'vault-bridges-pr-label', text: label });
+
+		// Refresh status button
+		const refreshBtn = panel.createEl('button', {
+			cls: 'vault-bridges-bar-btn vault-bridges-pr-btn',
+			text: '↻',
+			attr: { 'aria-label': 'Check PR status' },
+		});
+		refreshBtn.disabled = status === 'checking';
+		refreshBtn.addEventListener('click', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			this.plugin.bridgeManager.checkPrStatus(bridge);
+		});
+
+		// Merge button (only when open)
+		if (status === 'open' || status === 'checking') {
+			const mergeBtn = panel.createEl('button', {
+				cls: 'vault-bridges-bar-btn vault-bridges-pr-btn is-cta',
+				text: '⤲ Merge',
+				attr: { 'aria-label': 'Squash-merge the PR' },
+			});
+			mergeBtn.disabled = status === 'checking';
+			mergeBtn.addEventListener('click', (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.plugin.bridgeManager.mergePr(bridge);
+			});
+		}
+
+		// View in browser button
+		const viewBtn = panel.createEl('button', {
+			cls: 'vault-bridges-bar-btn vault-bridges-pr-btn',
+			text: '↗',
+			attr: { 'aria-label': 'Open PR in browser' },
+		});
+		viewBtn.addEventListener('click', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			window.open(prUrl, '_blank');
 		});
 	}
 
@@ -342,14 +411,15 @@ export class FileCommandBar {
 			},
 		}) as HTMLInputElement;
 
+		const pushVerb = bridge.prMode ? 'Open PR' : 'Push selected';
 		const pushBtn = footer.createEl('button', {
 			cls: 'vault-bridges-bar-btn is-cta vault-bridges-popdown-push',
-			text: `↑ Push selected (${changedFiles.length})`,
+			text: `↑ ${pushVerb} (${changedFiles.length})`,
 		});
 
 		const updatePushBtn = () => {
 			const selectedCount = [...checkboxes.values()].filter(c => c.checked).length;
-			pushBtn.textContent = `↑ Push selected (${selectedCount})`;
+			pushBtn.textContent = `↑ ${pushVerb} (${selectedCount})`;
 			pushBtn.disabled = selectedCount === 0;
 		};
 

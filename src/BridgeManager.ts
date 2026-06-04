@@ -14,6 +14,25 @@ import { ConflictResolutionModal } from './ConflictResolutionModal';
 
 export const execAsync = promisify(exec);
 
+/**
+ * A PATH-extended env object that includes Homebrew and common tool directories.
+ * Obsidian is launched as a macOS .app bundle and does not inherit the user's
+ * shell PATH, so `gh`, `git`, and other CLI tools installed via Homebrew are
+ * not found unless we add their directories explicitly.
+ */
+const SHELL_ENV: NodeJS.ProcessEnv = {
+	...process.env,
+	PATH: [
+		'/opt/homebrew/bin',   // Apple-silicon Homebrew
+		'/usr/local/bin',      // Intel Homebrew / custom installs
+		'/usr/bin',
+		'/bin',
+		process.env.PATH ?? '',
+	]
+		.filter(Boolean)
+		.join(':'),
+};
+
 function hashFile(filePath: string): string {
 	return createHash('sha1').update(readFileSync(filePath)).digest('hex');
 }
@@ -299,6 +318,7 @@ export class BridgeManager {
 			bridge.lastPulled = new Date().toISOString();
 			bridge.lastSynced = bridge.lastPulled;
 			bridge.lastError = undefined;
+			bridge.lastPrUrl = undefined; // PR was merged; clear the pending-PR indicator
 		} catch (err) {
 			bridge.status = 'error';
 			bridge.lastError = err instanceof Error ? err.message : String(err);
@@ -431,8 +451,12 @@ export class BridgeManager {
 	/**
 	 * Push vault changes back to the git repo and push to remote.
 	 *
+	 * When `bridge.prMode` is true the push is done via a feature branch and
+	 * a GitHub PR is opened with `gh pr create` instead of pushing directly to
+	 * `bridge.branch`.  The repo is left on `bridge.branch` after the call.
+	 *
 	 * @param bridge         - The bridge to push.
-	 * @param commitMessage  - Optional commit message; auto-generated if omitted.
+	 * @param commitMessage  - Optional commit message / PR title; auto-generated if omitted.
 	 * @param selectedFiles  - When provided, only these files (and their statuses)
 	 *                         are copied/removed and staged. Omit for a full push.
 	 */
@@ -445,10 +469,29 @@ export class BridgeManager {
 		this.plugin.statusBar.update();
 		this.plugin.fileCommandBar?.update();
 
+		// Tracks the feature branch name when prMode creates one, so we can
+		// clean it up on error.
+		let prBranch: string | undefined;
+
 		try {
 			// Validate branch
 			if (!/^[a-zA-Z0-9._\-/]+$/.test(bridge.branch)) {
 				throw new Error(`Invalid branch name: "${bridge.branch}"`);
+			}
+
+			// PR mode: fetch origin and create a fresh feature branch BEFORE
+			// touching any files so the working tree is based on the latest remote.
+			if (bridge.prMode) {
+				await execAsync(
+					`git -C "${bridge.repoPath}" fetch origin "${bridge.branch}"`,
+					{ timeout: 30000 }
+				);
+				const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+				prBranch = `vault-update/${ts}`;
+				await execAsync(
+					`git -C "${bridge.repoPath}" checkout -b "${prBranch}" "origin/${bridge.branch}"`,
+					{ timeout: 15000 }
+				);
 			}
 
 			const sourcePath = bridge.sourcePath
@@ -519,6 +562,17 @@ export class BridgeManager {
 				new Notice(`Vault Bridges: "${bridge.name}" — nothing to push, already up to date`);
 				bridge.status = 'ok';
 				bridge.isDirty = this.checkDirty(bridge);
+				// Return to base branch if a PR branch was created
+				if (prBranch) {
+					await execAsync(
+						`git -C "${bridge.repoPath}" checkout "${bridge.branch}"`,
+						{ timeout: 15000 }
+					).catch(() => {});
+					await execAsync(
+						`git -C "${bridge.repoPath}" branch -D "${prBranch}"`,
+						{ timeout: 5000 }
+					).catch(() => {});
+				}
 				return;
 			}
 
@@ -529,22 +583,87 @@ export class BridgeManager {
 				`git -C "${bridge.repoPath}" commit -m "${shellEsc(rawMsg)}"`,
 				{ timeout: 15000 }
 			);
-			await execAsync(
-				`git -C "${bridge.repoPath}" push origin "${bridge.branch}"`,
-				{ timeout: 30000 }
-			);
 
-			bridge.status = 'ok';
-			bridge.isDirty = this.checkDirty(bridge); // may still be dirty if partial push
-			bridge.lastPushed = new Date().toISOString();
-			bridge.lastSynced = bridge.lastPushed;
-			bridge.lastError = undefined;
-			// Re-record manifest only on full push (partial leaves remaining diffs intact)
-			if (!selectedFiles) this.recordManifest(bridge);
+			const fileCount = selectedFiles
+				? `${selectedFiles.length} file${selectedFiles.length !== 1 ? 's' : ''}`
+				: 'all changes';
 
-			const fileCount = selectedFiles ? `${selectedFiles.length} file${selectedFiles.length !== 1 ? 's' : ''}` : 'all changes';
-			new Notice(`Vault Bridges: ✓ "${bridge.name}" — pushed ${fileCount} to ${bridge.branch}`);
+			if (prBranch) {
+				// ── PR mode: push feature branch then open a PR ───────────────────
+				await execAsync(
+					`git -C "${bridge.repoPath}" push -u origin "${prBranch}"`,
+					{ timeout: 30000 }
+				);
+
+				let prUrl = '';
+				try {
+					const { stdout: prOut } = await execAsync(
+						`gh pr create` +
+						` --base "${shellEsc(bridge.branch)}"` +
+						` --head "${shellEsc(prBranch)}"` +
+						` --title "${shellEsc(rawMsg)}"` +
+						` --body "Changes synced from Obsidian via Vault Bridges."`,
+						{ cwd: bridge.repoPath, timeout: 30000, env: SHELL_ENV }
+					);
+					prUrl = prOut.trim();
+				} catch (prErr) {
+					const errMsg = prErr instanceof Error ? prErr.message : String(prErr);
+					new Notice(
+						`Vault Bridges: Branch "${prBranch}" pushed but PR creation failed — ${errMsg}`,
+						12000
+					);
+				}
+
+				// Return to base branch regardless of PR success
+				await execAsync(
+					`git -C "${bridge.repoPath}" checkout "${bridge.branch}"`,
+					{ timeout: 15000 }
+				).catch(() => {});
+
+				bridge.lastPrUrl = prUrl || undefined;
+				bridge.prStatus = prUrl ? 'open' : undefined;
+				bridge.status = 'ok';
+				bridge.isDirty = this.checkDirty(bridge);
+				bridge.lastPushed = new Date().toISOString();
+				bridge.lastSynced = bridge.lastPushed;
+				bridge.lastError = undefined;
+				if (!selectedFiles) this.recordManifest(bridge);
+
+				new Notice(
+					prUrl
+						? `Vault Bridges: ✓ "${bridge.name}" — PR opened: ${prUrl}`
+						: `Vault Bridges: ✓ "${bridge.name}" — pushed ${fileCount} to ${prBranch}`,
+					10000
+				);
+			} else {
+				// ── Direct push (original behaviour) ─────────────────────────────
+				await execAsync(
+					`git -C "${bridge.repoPath}" push origin "${bridge.branch}"`,
+					{ timeout: 30000 }
+				);
+
+				bridge.status = 'ok';
+				bridge.isDirty = this.checkDirty(bridge); // may still be dirty if partial push
+				bridge.lastPushed = new Date().toISOString();
+				bridge.lastSynced = bridge.lastPushed;
+				bridge.lastError = undefined;
+				if (!selectedFiles) this.recordManifest(bridge);
+
+				new Notice(`Vault Bridges: ✓ "${bridge.name}" — pushed ${fileCount} to ${bridge.branch}`);
+			}
 		} catch (err) {
+			// On error in PR mode, try to clean up the feature branch and return
+			// the repo to the base branch so it isn't left in a detached/unknown state.
+			if (prBranch) {
+				await execAsync(
+					`git -C "${bridge.repoPath}" checkout "${bridge.branch}"`,
+					{ timeout: 15000 }
+				).catch(() => {});
+				await execAsync(
+					`git -C "${bridge.repoPath}" branch -D "${prBranch}"`,
+					{ timeout: 5000 }
+				).catch(() => {});
+			}
 			bridge.status = 'error';
 			bridge.lastError = err instanceof Error ? err.message : String(err);
 			console.error(`Vault Bridges: Error pushing "${bridge.name}":`, err);
@@ -560,5 +679,64 @@ export class BridgeManager {
 			this.plugin.fileCommandBar?.update();
 			this.refreshSettingsTab();
 		}
+	}
+
+	/** Fetch the current state of the bridge's open PR from GitHub. */
+	async checkPrStatus(bridge: Bridge): Promise<void> {
+		if (!bridge.lastPrUrl) return;
+		bridge.prStatus = 'checking';
+		this.plugin.fileCommandBar?.update();
+		try {
+			const { stdout } = await execAsync(
+				`gh pr view "${bridge.lastPrUrl}" --json state --jq '.state'`,
+				{ timeout: 15000, env: SHELL_ENV }
+			);
+			const state = stdout.trim().toLowerCase();
+			if (state === 'open') bridge.prStatus = 'open';
+			else if (state === 'merged') {
+				bridge.prStatus = 'merged';
+				// Clear after a beat so the bar can show "merged" briefly
+				setTimeout(() => {
+					bridge.lastPrUrl = undefined;
+					bridge.prStatus = undefined;
+					this.plugin.saveSettings();
+					this.plugin.fileCommandBar?.update();
+				}, 4000);
+			} else {
+				bridge.prStatus = 'closed';
+			}
+		} catch {
+			bridge.prStatus = 'open'; // assume still open on error
+		}
+		this.plugin.saveSettings();
+		this.plugin.fileCommandBar?.update();
+	}
+
+	/** Merge the bridge's open PR via `gh pr merge --squash --delete-branch`. */
+	async mergePr(bridge: Bridge): Promise<void> {
+		if (!bridge.lastPrUrl) return;
+		bridge.prStatus = 'checking';
+		this.plugin.fileCommandBar?.update();
+		try {
+			await execAsync(
+				`gh pr merge "${bridge.lastPrUrl}" --squash --delete-branch`,
+				{ timeout: 60000, env: SHELL_ENV }
+			);
+			new Notice(`Vault Bridges: ✓ PR merged — ${bridge.lastPrUrl}`, 8000);
+			bridge.prStatus = 'merged';
+			this.plugin.fileCommandBar?.update();
+			setTimeout(() => {
+				bridge.lastPrUrl = undefined;
+				bridge.prStatus = undefined;
+				this.plugin.saveSettings();
+				this.plugin.fileCommandBar?.update();
+			}, 4000);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			new Notice(`Vault Bridges: merge failed — ${msg}`, 10000);
+			bridge.prStatus = 'open';
+			this.plugin.fileCommandBar?.update();
+		}
+		this.plugin.saveSettings();
 	}
 }

@@ -421,3 +421,39 @@
 	white-space: nowrap;
 }
 
+/* ── PR panel ──────────────────────────────────────────────────────── */
+.vault-bridges-pr-panel {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 10px 3px 8px;
+	border-top: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	font-size: 11px;
+}
+
+.vault-bridges-pr-status {
+	display: inline-flex;
+	align-items: center;
+	padding: 1px 7px;
+	border-radius: 10px;
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+.vault-bridges-pr-status.is-open    { background: rgba(63,185,80,0.18); color: #3fb950; }
+.vault-bridges-pr-status.is-merged  { background: rgba(163,113,247,0.18); color: #a371f7; }
+.vault-bridges-pr-status.is-closed  { background: rgba(248,81,73,0.18); color: #f85149; }
+.vault-bridges-pr-status.is-checking { background: var(--background-modifier-border); color: var(--text-muted); }
+
+.vault-bridges-pr-label {
+	color: var(--text-muted);
+	flex: 1;
+}
+
+.vault-bridges-pr-btn {
+	padding: 2px 8px;
+	font-size: 11px;
+}
+

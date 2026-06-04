@@ -97,6 +97,19 @@ export class AddBridgeModal extends Modal {
 			);
 
 		new Setting(contentEl)
+			.setName('Use pull request mode')
+			.setDesc(
+				'When pushing, create a feature branch (vault-update/…) and open a GitHub PR ' +
+				'instead of pushing directly to the branch above. ' +
+				'Requires the `gh` CLI to be installed and authenticated.'
+			)
+			.addToggle(toggle =>
+				toggle
+					.setValue(this.bridge.prMode ?? false)
+					.onChange(value => { this.bridge.prMode = value; })
+			);
+
+		new Setting(contentEl)
 			.addButton(btn =>
 				btn
 					.setButtonText(this.isEdit ? 'Save Changes' : 'Add Bridge')

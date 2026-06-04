@@ -206,8 +206,10 @@ export class VaultBridgesSettingsTab extends PluginSettingTab {
 			: '';
 		const dirtyNote = isDirty ? ' · ⚠️ Push before pulling' : '';
 		const errorNote = bridge.lastError ? ` · Error: ${bridge.lastError}` : '';
+		const prNote = bridge.prMode ? ' · PR mode' : '';
+		const prUrlNote = bridge.lastPrUrl ? ` · PR: ${bridge.lastPrUrl}` : '';
 
-		return `${src} ${arrow} ${bridge.vaultPath} · ${pulledLabel}${pushedLabel}${dirtyNote}${errorNote}`;
+		return `${src} ${arrow} ${bridge.vaultPath} · ${pulledLabel}${pushedLabel}${prNote}${prUrlNote}${dirtyNote}${errorNote}`;
 	}
 
 	private statusEmoji(status: Bridge['status']): string {
