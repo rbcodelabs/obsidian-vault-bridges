@@ -354,6 +354,42 @@
 	flex: 1;
 }
 
+.vault-bridges-popdown-open-btn {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	border-radius: 3px;
+	opacity: 0;
+	transition: opacity 0.1s ease;
+}
+
+.vault-bridges-popdown-row:hover .vault-bridges-popdown-open-btn {
+	opacity: 1;
+}
+
+.vault-bridges-popdown-open-btn:hover {
+	color: var(--text-accent);
+	background: var(--background-modifier-hover);
+}
+
+.vault-bridges-popdown-open-btn:disabled {
+	opacity: 0.3;
+	cursor: default;
+}
+
+.vault-bridges-popdown-open-btn svg {
+	width: 12px;
+	height: 12px;
+}
+
 .vault-bridges-popdown-footer {
 	display: flex;
 	gap: 8px;
