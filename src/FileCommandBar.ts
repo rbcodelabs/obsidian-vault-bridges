@@ -205,6 +205,71 @@ export class FileCommandBar {
 			this.closePopdown(leafId);
 			this.plugin.bridgeManager.pushBridge(bridge);
 		});
+
+		// ── PR panel (shown when a PR is open) ──────────────────────────
+		if (bridge.lastPrUrl) {
+			this.buildPrPanel(bar, bridge);
+		}
+	}
+
+	private buildPrPanel(bar: HTMLElement, bridge: Bridge): void {
+		const prUrl = bridge.lastPrUrl!;
+		// Extract PR number from URL for display
+		const prNum = prUrl.match(/\/pull\/(\d+)/)?.[1];
+		const label = prNum ? `PR #${prNum}` : 'PR open';
+
+		const panel = bar.createEl('div', { cls: 'vault-bridges-pr-panel' });
+
+		// Status badge
+		const status = bridge.prStatus ?? 'open';
+		const statusText = status === 'checking' ? '…' : status;
+		panel.createEl('span', {
+			cls: `vault-bridges-pr-status is-${status}`,
+			text: statusText,
+			attr: { 'aria-label': `PR status: ${status}` },
+		});
+
+		panel.createEl('span', { cls: 'vault-bridges-pr-label', text: label });
+
+		// Refresh status button
+		const refreshBtn = panel.createEl('button', {
+			cls: 'vault-bridges-bar-btn vault-bridges-pr-btn',
+			text: '↻',
+			attr: { 'aria-label': 'Check PR status' },
+		});
+		refreshBtn.disabled = status === 'checking';
+		refreshBtn.addEventListener('click', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			this.plugin.bridgeManager.checkPrStatus(bridge);
+		});
+
+		// Merge button (only when open)
+		if (status === 'open' || status === 'checking') {
+			const mergeBtn = panel.createEl('button', {
+				cls: 'vault-bridges-bar-btn vault-bridges-pr-btn is-cta',
+				text: '⤲ Merge',
+				attr: { 'aria-label': 'Squash-merge the PR' },
+			});
+			mergeBtn.disabled = status === 'checking';
+			mergeBtn.addEventListener('click', (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.plugin.bridgeManager.mergePr(bridge);
+			});
+		}
+
+		// View in browser button
+		const viewBtn = panel.createEl('button', {
+			cls: 'vault-bridges-bar-btn vault-bridges-pr-btn',
+			text: '↗',
+			attr: { 'aria-label': 'Open PR in browser' },
+		});
+		viewBtn.addEventListener('click', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			window.open(prUrl, '_blank');
+		});
 	}
 
 	// ── Changes pill & popdown ─────────────────────────────────────────────

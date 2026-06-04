@@ -11,6 +11,7 @@ export interface Bridge {
 	lastPulled?: string;   // ISO timestamp of last successful pull
 	lastPushed?: string;   // ISO timestamp of last successful push
 	lastPrUrl?: string;    // URL of the most recently opened PR (cleared on next successful pull)
+	prStatus?: 'open' | 'merged' | 'closed' | 'checking';
 	fileManifest?: Record<string, string>; // vault-relative path → SHA-1 hash, recorded after each pull
 	isDirty?: boolean;     // true if vault files have been modified since last pull
 	status: 'ok' | 'error' | 'syncing' | 'unlinked' | 'unknown';

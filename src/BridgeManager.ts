@@ -14,6 +14,25 @@ import { ConflictResolutionModal } from './ConflictResolutionModal';
 
 export const execAsync = promisify(exec);
 
+/**
+ * A PATH-extended env object that includes Homebrew and common tool directories.
+ * Obsidian is launched as a macOS .app bundle and does not inherit the user's
+ * shell PATH, so `gh`, `git`, and other CLI tools installed via Homebrew are
+ * not found unless we add their directories explicitly.
+ */
+const SHELL_ENV: NodeJS.ProcessEnv = {
+	...process.env,
+	PATH: [
+		'/opt/homebrew/bin',   // Apple-silicon Homebrew
+		'/usr/local/bin',      // Intel Homebrew / custom installs
+		'/usr/bin',
+		'/bin',
+		process.env.PATH ?? '',
+	]
+		.filter(Boolean)
+		.join(':'),
+};
+
 function hashFile(filePath: string): string {
 	return createHash('sha1').update(readFileSync(filePath)).digest('hex');
 }
@@ -584,11 +603,9 @@ export class BridgeManager {
 						` --head "${shellEsc(prBranch)}"` +
 						` --title "${shellEsc(rawMsg)}"` +
 						` --body "Changes synced from Obsidian via Vault Bridges."`,
-						{ cwd: bridge.repoPath, timeout: 30000 }
+						{ cwd: bridge.repoPath, timeout: 30000, env: SHELL_ENV }
 					);
 					prUrl = prOut.trim();
-					// Open in the default browser
-					await execAsync(`open "${prUrl}"`, { timeout: 5000 }).catch(() => {});
 				} catch (prErr) {
 					const errMsg = prErr instanceof Error ? prErr.message : String(prErr);
 					new Notice(
@@ -604,6 +621,7 @@ export class BridgeManager {
 				).catch(() => {});
 
 				bridge.lastPrUrl = prUrl || undefined;
+				bridge.prStatus = prUrl ? 'open' : undefined;
 				bridge.status = 'ok';
 				bridge.isDirty = this.checkDirty(bridge);
 				bridge.lastPushed = new Date().toISOString();
@@ -661,5 +679,64 @@ export class BridgeManager {
 			this.plugin.fileCommandBar?.update();
 			this.refreshSettingsTab();
 		}
+	}
+
+	/** Fetch the current state of the bridge's open PR from GitHub. */
+	async checkPrStatus(bridge: Bridge): Promise<void> {
+		if (!bridge.lastPrUrl) return;
+		bridge.prStatus = 'checking';
+		this.plugin.fileCommandBar?.update();
+		try {
+			const { stdout } = await execAsync(
+				`gh pr view "${bridge.lastPrUrl}" --json state --jq '.state'`,
+				{ timeout: 15000, env: SHELL_ENV }
+			);
+			const state = stdout.trim().toLowerCase();
+			if (state === 'open') bridge.prStatus = 'open';
+			else if (state === 'merged') {
+				bridge.prStatus = 'merged';
+				// Clear after a beat so the bar can show "merged" briefly
+				setTimeout(() => {
+					bridge.lastPrUrl = undefined;
+					bridge.prStatus = undefined;
+					this.plugin.saveSettings();
+					this.plugin.fileCommandBar?.update();
+				}, 4000);
+			} else {
+				bridge.prStatus = 'closed';
+			}
+		} catch {
+			bridge.prStatus = 'open'; // assume still open on error
+		}
+		this.plugin.saveSettings();
+		this.plugin.fileCommandBar?.update();
+	}
+
+	/** Merge the bridge's open PR via `gh pr merge --squash --delete-branch`. */
+	async mergePr(bridge: Bridge): Promise<void> {
+		if (!bridge.lastPrUrl) return;
+		bridge.prStatus = 'checking';
+		this.plugin.fileCommandBar?.update();
+		try {
+			await execAsync(
+				`gh pr merge "${bridge.lastPrUrl}" --squash --delete-branch`,
+				{ timeout: 60000, env: SHELL_ENV }
+			);
+			new Notice(`Vault Bridges: ✓ PR merged — ${bridge.lastPrUrl}`, 8000);
+			bridge.prStatus = 'merged';
+			this.plugin.fileCommandBar?.update();
+			setTimeout(() => {
+				bridge.lastPrUrl = undefined;
+				bridge.prStatus = undefined;
+				this.plugin.saveSettings();
+				this.plugin.fileCommandBar?.update();
+			}, 4000);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			new Notice(`Vault Bridges: merge failed — ${msg}`, 10000);
+			bridge.prStatus = 'open';
+			this.plugin.fileCommandBar?.update();
+		}
+		this.plugin.saveSettings();
 	}
 }
