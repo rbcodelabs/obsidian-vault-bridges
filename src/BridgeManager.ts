@@ -186,13 +186,21 @@ export class BridgeManager {
 
 		const diag = await this.gatherDiagnostics(bridge.repoPath, errorText, operation);
 
-		// For auth/network errors, a targeted hint is more useful than Claude analysis
+		// For well-understood errors, a targeted hint is more useful than Claude analysis
 		if (diag.errorType === 'auth_failure') {
 			new Notice('Vault Bridges: Auth error — run `ssh-add` or check your git credentials, then try again.', 10000);
 			return;
 		}
 		if (diag.errorType === 'network_error') {
 			new Notice('Vault Bridges: Network error — check your internet connection and the remote URL, then try again.', 10000);
+			return;
+		}
+		if (diag.errorType === 'repo_dirty') {
+			new Notice(
+				`Vault Bridges: "${bridge.name}" — the repo has uncommitted changes blocking the pull. ` +
+				`Run \`git stash\` in ${bridge.repoPath} then try again.`,
+				12000
+			);
 			return;
 		}
 
@@ -353,6 +361,27 @@ export class BridgeManager {
 			throw new Error(`Invalid branch name: "${bridge.branch}"`);
 		}
 
+		// Auto-stash any uncommitted repo-side changes so the pull can proceed.
+		// This handles "cannot pull with rebase: You have unstaged changes" — a common
+		// case when files were edited directly in the repo outside of Obsidian.
+		let stashed = false;
+		try {
+			const { stdout: statusOut } = await execAsync(
+				`git -C "${bridge.repoPath}" status --porcelain`,
+				{ timeout: 10000 }
+			);
+			if (statusOut.trim().length > 0) {
+				const { stdout: stashOut } = await execAsync(
+					`git -C "${bridge.repoPath}" stash push --include-untracked -m "vault-bridges auto-stash"`,
+					{ timeout: 15000 }
+				);
+				stashed = !stashOut.trim().startsWith('No local changes');
+			}
+		} catch (stashCheckErr) {
+			// Non-fatal: if the stash check/push fails, proceed with the pull anyway
+			console.warn(`Vault Bridges: auto-stash check failed for "${bridge.name}":`, stashCheckErr);
+		}
+
 		try {
 			const { stdout, stderr } = await execAsync(
 				`git -C "${bridge.repoPath}" pull origin "${bridge.branch}"`,
@@ -360,7 +389,34 @@ export class BridgeManager {
 			);
 			console.log(`Vault Bridges: Pulled "${bridge.name}":`, stdout || stderr);
 		} catch (err) {
+			// Restore stash on pull failure so no work is lost
+			if (stashed) {
+				await execAsync(
+					`git -C "${bridge.repoPath}" stash pop`,
+					{ timeout: 15000 }
+				).catch(popErr =>
+					console.warn(`Vault Bridges: stash pop after failed pull for "${bridge.name}":`, popErr)
+				);
+			}
 			throw new Error(`git pull failed: ${err instanceof Error ? err.message : String(err)}`);
+		}
+
+		// Restore stashed changes after a successful pull
+		if (stashed) {
+			try {
+				await execAsync(
+					`git -C "${bridge.repoPath}" stash pop`,
+					{ timeout: 15000 }
+				);
+			} catch (stashPopErr) {
+				// Pull succeeded but stash pop hit a conflict — warn without failing the sync
+				new Notice(
+					`Vault Bridges: "${bridge.name}" — pull succeeded but stash pop failed. ` +
+					`Resolve the conflict manually in: ${bridge.repoPath}`,
+					12000
+				);
+				console.error(`Vault Bridges: stash pop failed for "${bridge.name}":`, stashPopErr);
+			}
 		}
 	}
 

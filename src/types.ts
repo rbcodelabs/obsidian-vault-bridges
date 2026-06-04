@@ -38,7 +38,7 @@ export interface ChangedFile {
 	status: 'modified' | 'added' | 'deleted';
 }
 
-export type GitErrorType = 'conflict' | 'pull_rejected' | 'push_rejected' | 'auth_failure' | 'network_error' | 'generic';
+export type GitErrorType = 'conflict' | 'pull_rejected' | 'push_rejected' | 'auth_failure' | 'network_error' | 'repo_dirty' | 'generic';
 
 export interface GitFixStep {
 	id: string;
