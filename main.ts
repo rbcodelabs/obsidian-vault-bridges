@@ -1,10 +1,11 @@
-import { Plugin } from 'obsidian';
+import { Plugin, WorkspaceLeaf } from 'obsidian';
 import { VaultBridgesSettings, DEFAULT_SETTINGS, Bridge } from './src/types';
 import { BridgeManager } from './src/BridgeManager';
 import { VaultBridgesSettingsTab } from './src/SettingsTab';
 import { StatusBarManager } from './src/StatusBar';
 import { VaultBridgesAPI } from './src/VaultBridgesAPI';
 import { FileCommandBar } from './src/FileCommandBar';
+import { BridgesSidebarView, BRIDGES_SIDEBAR_VIEW_TYPE } from './src/BridgesSidebarView';
 
 export type { VaultBridgesAPI } from './src/VaultBridgesAPI';
 export type { AddBridgeOptions } from './src/VaultBridgesAPI';
@@ -16,6 +17,7 @@ export default class VaultBridgesPlugin extends Plugin {
 	/** Public API for other plugins. See src/VaultBridgesAPI.ts for full docs. */
 	api!: VaultBridgesAPI;
 	fileCommandBar!: FileCommandBar;
+	sidebarView?: BridgesSidebarView;
 	settingsTab?: VaultBridgesSettingsTab;
 
 	async onload() {
@@ -26,8 +28,25 @@ export default class VaultBridgesPlugin extends Plugin {
 		this.api = new VaultBridgesAPI(this);
 		this.fileCommandBar = new FileCommandBar(this);
 
+		// Register sidebar view
+		this.registerView(BRIDGES_SIDEBAR_VIEW_TYPE, (leaf: WorkspaceLeaf) => {
+			this.sidebarView = new BridgesSidebarView(leaf, this);
+			return this.sidebarView;
+		});
+
+		// Ribbon icon to open/reveal the sidebar
+		this.addRibbonIcon('git-fork', 'Vault Bridges', () => {
+			this.activateSidebarView();
+		});
+
 		this.settingsTab = new VaultBridgesSettingsTab(this.app, this);
 		this.addSettingTab(this.settingsTab);
+
+		this.addCommand({
+			id: 'open-sidebar',
+			name: 'Open Bridges Sidebar',
+			callback: () => this.activateSidebarView(),
+		});
 
 		this.addCommand({
 			id: 'sync-all-bridges',
@@ -111,8 +130,24 @@ export default class VaultBridgesPlugin extends Plugin {
 		});
 	}
 
+	/** Open the sidebar view, or reveal it if already open. */
+	async activateSidebarView(): Promise<void> {
+		const { workspace } = this.app;
+		const existing = workspace.getLeavesOfType(BRIDGES_SIDEBAR_VIEW_TYPE);
+		if (existing.length > 0) {
+			workspace.revealLeaf(existing[0]);
+			return;
+		}
+		const leaf = workspace.getRightLeaf(false);
+		if (leaf) {
+			await leaf.setViewState({ type: BRIDGES_SIDEBAR_VIEW_TYPE, active: true });
+			workspace.revealLeaf(leaf);
+		}
+	}
+
 	onunload() {
 		this.fileCommandBar?.destroy();
+		this.app.workspace.detachLeavesOfType(BRIDGES_SIDEBAR_VIEW_TYPE);
 		console.log('Vault Bridges: unloaded');
 	}
 

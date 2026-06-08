@@ -61,6 +61,15 @@ export class BridgeManager {
 		}
 	}
 
+	/**
+	 * Notify all UI surfaces (file command bar + sidebar) to re-render.
+	 * Centralised here so adding a new surface only requires one edit.
+	 */
+	private notifyUI(): void {
+		this.plugin.fileCommandBar?.update();
+		this.plugin.sidebarView?.update();
+	}
+
 	// ─── Manifest / dirty tracking ────────────────────────────────────────────
 
 	private buildManifest(basePath: string, currentPath: string): Record<string, string> {
@@ -103,7 +112,7 @@ export class BridgeManager {
 		// Always re-render the command bar for any bridge file change so the
 		// pending-changes count stays current even when isDirty was already true.
 		if (anyBridgeFile) {
-			this.plugin.fileCommandBar?.update();
+			this.notifyUI();
 		}
 		// Only persist settings when the dirty flag actually flipped (avoids
 		// excessive writes on every keystroke).
@@ -237,7 +246,7 @@ export class BridgeManager {
 				bridge.lastError = `Fix step failed: ${msg}`;
 				await this.plugin.saveSettings();
 				this.plugin.statusBar.update();
-				this.plugin.fileCommandBar?.update();
+				this.notifyUI();
 				new Notice(`Vault Bridges: Fix step failed — "${step.description}": ${msg}`, 10000);
 				return;
 			}
@@ -341,7 +350,7 @@ export class BridgeManager {
 		} finally {
 			await this.plugin.saveSettings();
 			this.plugin.statusBar.update();
-			this.plugin.fileCommandBar?.update();
+			this.notifyUI();
 			this.refreshSettingsTab();
 		}
 	}
@@ -732,7 +741,7 @@ export class BridgeManager {
 		} finally {
 			await this.plugin.saveSettings();
 			this.plugin.statusBar.update();
-			this.plugin.fileCommandBar?.update();
+			this.notifyUI();
 			this.refreshSettingsTab();
 		}
 	}
@@ -756,7 +765,7 @@ export class BridgeManager {
 					bridge.lastPrUrl = undefined;
 					bridge.prStatus = undefined;
 					this.plugin.saveSettings();
-					this.plugin.fileCommandBar?.update();
+					this.notifyUI();
 				}, 4000);
 			} else {
 				bridge.prStatus = 'closed';
@@ -780,18 +789,18 @@ export class BridgeManager {
 			);
 			new Notice(`Vault Bridges: ✓ PR merged — ${bridge.lastPrUrl}`, 8000);
 			bridge.prStatus = 'merged';
-			this.plugin.fileCommandBar?.update();
+			this.notifyUI();
 			setTimeout(() => {
 				bridge.lastPrUrl = undefined;
 				bridge.prStatus = undefined;
 				this.plugin.saveSettings();
-				this.plugin.fileCommandBar?.update();
+				this.notifyUI();
 			}, 4000);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			new Notice(`Vault Bridges: merge failed — ${msg}`, 10000);
 			bridge.prStatus = 'open';
-			this.plugin.fileCommandBar?.update();
+			this.notifyUI();
 		}
 		this.plugin.saveSettings();
 	}
