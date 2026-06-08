@@ -32,6 +32,7 @@ Vault Bridges adds a third option: a managed, bidirectional bridge that stays fr
 
 - **Bidirectional sync** — pull from Git into your vault, or push edits from your vault back to the repo with a commit and push
 - **Real file copies** — files are copied into the vault (not symlinked), so Obsidian fully indexes, searches, and links them
+- **Bridges Sidebar View** — a dedicated side panel lists every bridge with its current status, pending change count, and Pull / Push buttons; act on any bridge without first navigating to a bridged file
 - **In-editor command bar** — a slim bar appears at the top of every bridged file with Pull and Push controls so you never have to leave the document
 - **Pending-changes pill** — when you have unsaved edits, a "● N changes ▾" pill shows the exact count; click it to see which files changed and selectively choose which ones to include in your next commit
 - **Selective push** — check or uncheck individual files in the popdown, add an optional commit message, and push only what you want
@@ -122,6 +123,37 @@ Click outside the popdown, press Escape, or click the pill again to dismiss with
 The **↑ Push all** button on the right side of the bar always commits and pushes every changed file immediately, the same as the ⬆ button in the settings panel. Use this when you want a fast one-click commit of everything.
 
 **Push selected** (via the pill popdown) is for when you want to review the diff list, exclude certain files from the commit, or write a custom commit message.
+
+---
+
+## Bridges Sidebar View
+
+The Bridges Sidebar View lets you see all your bridges and act on any of them without first navigating to a file inside a bridge destination. It is especially useful when you want to pull or push across multiple bridges in one session.
+
+**To open the sidebar:** run `Vault Bridges: Open Bridges Sidebar` from the command palette, or click the bridge icon in the left ribbon.
+
+### What it shows
+
+Each bridge gets a card with:
+
+- **Status icon** — `✓` (clean), `●` (dirty/pending changes), `↻` (syncing), or `✕` (error)
+- **Bridge name** and **branch** pill
+- **Pull** and **Push** buttons — same actions as the in-editor command bar, available without opening a file
+- **Changes pill** — when a bridge has pending changes, a "● N changes ▾" pill shows the count; click it to expand the file list inline
+- **Expanded file list** — shows each changed file with an `M` / `A` / `D` badge, an open-in-tab button, and a commit message field; a push button at the bottom commits and pushes all listed files
+
+### Header actions
+
+Two buttons at the top of the sidebar act on all bridges at once:
+
+| Button | Action |
+|---|---|
+| ↓ Pull all | Pull every bridge (git pull + copy files into vault) |
+| ↑ Push all | Push every bridge that has pending changes |
+
+### PR mode
+
+When a bridge's **PR mode** is enabled, the Push button changes to **Open PR** and a PR status panel appears below the bridge card after a PR is opened. From there you can check PR status, merge, or open the PR in your browser — all without leaving Obsidian.
 
 ---
 

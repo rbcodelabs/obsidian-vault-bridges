@@ -89,4 +89,28 @@ test.describe('Vault Bridges UI', () => {
 		await page.waitForTimeout(200);
 		await expect(page).toHaveScreenshot('command-bar-popdown.png', { fullPage: true });
 	});
+
+	test('sidebar — clean state', async ({ page }) => {
+		await page.setViewportSize({ width: 860, height: 620 });
+		await page.goto(harnessUrl('sidebar'));
+		await page.waitForSelector('.vault-bridges-sidebar');
+		await page.waitForTimeout(200);
+		await expect(page).toHaveScreenshot('sidebar-clean.png', { fullPage: true });
+	});
+
+	test('sidebar — dirty bridge with expanded file list', async ({ page }) => {
+		await page.setViewportSize({ width: 860, height: 700 });
+		await page.goto(harnessUrl('sidebar-dirty'));
+		await page.waitForSelector('.vault-bridges-sidebar');
+		await page.waitForTimeout(200);
+		await expect(page).toHaveScreenshot('sidebar-dirty-expanded.png', { fullPage: true });
+	});
+
+	test('sidebar — empty state', async ({ page }) => {
+		await page.setViewportSize({ width: 860, height: 620 });
+		await page.goto(harnessUrl('sidebar-empty'));
+		await page.waitForSelector('.vault-bridges-sidebar-empty');
+		await page.waitForTimeout(200);
+		await expect(page).toHaveScreenshot('sidebar-empty.png', { fullPage: true });
+	});
 });

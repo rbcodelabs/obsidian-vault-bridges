@@ -3,6 +3,7 @@ import { mockApp, MarkdownView, WorkspaceLeaf } from './obsidian-mock';
 import { VaultBridgesSettingsTab } from '../../src/SettingsTab';
 import { ConflictResolutionModal } from '../../src/ConflictResolutionModal';
 import { FileCommandBar } from '../../src/FileCommandBar';
+import { BridgesSidebarView } from '../../src/BridgesSidebarView';
 import { fixtureBridges, emptyBridges, fixturePlan, dirtyBridge, fixtureChangedFiles } from './fixtures';
 import type { Bridge, VaultBridgesSettings } from '../../src/types';
 
@@ -155,6 +156,85 @@ function renderCommandBarScenario(openPopdown: boolean) {
 	}
 }
 
+// ─── BridgesSidebarView scenarios ────────────────────────────────────────────
+
+function renderSidebarScenario(variant: 'clean' | 'dirty-expanded' | 'empty') {
+	// Build a mock leaf — BridgesSidebarView extends ItemView which needs a leaf
+	const fakeLeaf = new WorkspaceLeaf('sidebar-leaf', null as never);
+
+	// Choose fixture data
+	let sidebarBridges: Bridge[];
+	if (variant === 'empty') {
+		sidebarBridges = [];
+	} else if (variant === 'dirty-expanded') {
+		sidebarBridges = [
+			{ ...dirtyBridge },
+			...fixtureBridges.slice(1),
+		];
+	} else {
+		sidebarBridges = [...fixtureBridges];
+	}
+
+	const sidebarSettings: VaultBridgesSettings = {
+		bridges: sidebarBridges,
+		syncOnStartup: true,
+		claudePath: '/opt/homebrew/bin/claude',
+		claudeEnabled: true,
+	};
+
+	const sidebarPlugin = {
+		app: mockApp,
+		settings: sidebarSettings,
+		bridgeManager: {
+			...mockBridgeManager,
+			checkPrStatus: (_bridge: Bridge) => {},
+			mergePr: (_bridge: Bridge) => {},
+		},
+		statusBar: mockStatusBar,
+		saveSettings: async () => {},
+		registerEvent: (_ref: unknown) => {},
+	};
+
+	const view = new BridgesSidebarView(fakeLeaf, sidebarPlugin as never);
+	view.onOpen();
+
+	// If dirty-expanded, also expand the dirty bridge's file list
+	if (variant === 'dirty-expanded') {
+		// Simulate clicking the changes pill by expanding via the internal set
+		(view as never as { expandedBridges: Set<string> }).expandedBridges.add(dirtyBridge.id);
+		view.update();
+	}
+
+	// Mount the sidebar pane into a realistic chrome
+	const wrapper = document.getElementById('settings-content')!;
+	wrapper.style.cssText = '';
+
+	// Replace the mock-window with a sidebar-style layout
+	const mockWindow = document.querySelector('.mock-window') as HTMLElement;
+	if (mockWindow) {
+		mockWindow.style.flexDirection = 'row';
+		// Shrink the main area and show a sidebar pane on the left
+		const sidePane = document.createElement('div');
+		sidePane.className = 'mock-sidebar-pane';
+		Object.assign(sidePane.style, {
+			width: '280px',
+			height: '100%',
+			background: 'var(--background-secondary)',
+			borderRight: '1px solid var(--background-modifier-border)',
+			overflow: 'hidden',
+			display: 'flex',
+			flexDirection: 'column',
+			flexShrink: '0',
+		});
+		sidePane.appendChild(view.contentEl);
+		// Insert sidebar before the modal area
+		const mockModal = document.querySelector('.mock-modal');
+		if (mockModal) {
+			mockModal.insertBefore(sidePane, mockModal.firstChild);
+		}
+	}
+}
+
 // ─── Render ───────────────────────────────────────────────────────────────────
 
 // tab is referenced inside mockBridgeManager callbacks — forward-declare
@@ -170,6 +250,12 @@ if (scenario === 'conflict-modal') {
 	renderCommandBarScenario(false);
 } else if (scenario === 'command-bar-popdown') {
 	renderCommandBarScenario(true);
+} else if (scenario === 'sidebar') {
+	renderSidebarScenario('clean');
+} else if (scenario === 'sidebar-dirty') {
+	renderSidebarScenario('dirty-expanded');
+} else if (scenario === 'sidebar-empty') {
+	renderSidebarScenario('empty');
 } else {
 	tab = new VaultBridgesSettingsTab(mockApp, mockPlugin as never);
 	const container = document.getElementById('settings-content')!;
