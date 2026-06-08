@@ -457,3 +457,384 @@
 	font-size: 11px;
 }
 
+/* ─── Bridges Sidebar View ─────────────────────────────────────────────────── */
+
+.vault-bridges-sidebar {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	font-size: var(--font-ui-small);
+	overflow: hidden;
+}
+
+/* Empty state */
+.vault-bridges-sidebar-empty {
+	padding: 20px 16px;
+	color: var(--text-muted);
+	text-align: center;
+}
+
+.vault-bridges-sidebar-settings-btn {
+	margin-top: 12px;
+	padding: 6px 14px;
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	cursor: pointer;
+	font-size: var(--font-ui-small);
+	font-family: inherit;
+}
+
+.vault-bridges-sidebar-settings-btn:hover {
+	background: var(--interactive-hover);
+}
+
+/* Header row */
+.vault-bridges-sidebar-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 12px 6px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex-shrink: 0;
+}
+
+.vault-bridges-sidebar-title {
+	font-size: var(--font-ui-smaller, 11px);
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.vault-bridges-sidebar-header-actions {
+	display: flex;
+	gap: 4px;
+}
+
+.vault-bridges-sidebar-header-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 8px;
+	height: 22px;
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	cursor: pointer;
+	font-size: var(--font-ui-smaller, 11px);
+	font-family: inherit;
+	white-space: nowrap;
+}
+
+.vault-bridges-sidebar-header-btn:hover {
+	background: var(--interactive-hover);
+}
+
+.vault-bridges-sidebar-header-btn svg {
+	width: 13px;
+	height: 13px;
+}
+
+/* Bridge list */
+.vault-bridges-sidebar-list {
+	flex: 1;
+	overflow-y: auto;
+	padding: 6px 0;
+}
+
+/* Individual bridge card */
+.vault-bridges-sidebar-card {
+	margin: 0 8px 6px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m, 6px);
+	overflow: hidden;
+}
+
+.vault-bridges-sidebar-card.is-dirty {
+	border-left: 3px solid var(--color-orange, #e8a029);
+}
+
+.vault-bridges-sidebar-card.is-error {
+	border-left: 3px solid var(--color-red, #dc2626);
+	background: var(--background-modifier-error-hover, rgba(220, 38, 38, 0.05));
+}
+
+.vault-bridges-sidebar-card.is-syncing {
+	opacity: 0.75;
+}
+
+/* Card header */
+.vault-bridges-sidebar-card-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 7px 10px;
+	background: var(--background-secondary);
+	gap: 6px;
+}
+
+.vault-bridges-sidebar-card-left {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	overflow: hidden;
+	flex: 1;
+	min-width: 0;
+}
+
+.vault-bridges-sidebar-status-icon {
+	flex-shrink: 0;
+	font-size: 0.8em;
+	line-height: 1;
+}
+
+.vault-bridges-sidebar-card:not(.is-dirty):not(.is-error):not(.is-syncing)
+.vault-bridges-sidebar-status-icon {
+	color: var(--color-green, #16a34a);
+}
+
+.vault-bridges-sidebar-card.is-dirty .vault-bridges-sidebar-status-icon {
+	color: var(--color-orange, #e8a029);
+}
+
+.vault-bridges-sidebar-card.is-error .vault-bridges-sidebar-status-icon {
+	color: var(--text-error);
+}
+
+.vault-bridges-sidebar-card-name {
+	font-weight: 600;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.vault-bridges-sidebar-card-branch {
+	flex-shrink: 0;
+	color: var(--text-faint);
+	background: var(--background-modifier-border);
+	padding: 1px 6px;
+	border-radius: 9px;
+	white-space: nowrap;
+	font-size: 0.82em;
+}
+
+.vault-bridges-sidebar-card-actions {
+	display: flex;
+	gap: 4px;
+	flex-shrink: 0;
+}
+
+/* Sidebar action buttons */
+.vault-bridges-sidebar-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	cursor: pointer;
+	font-size: var(--font-ui-smaller, 11px);
+	font-family: inherit;
+	transition: background 80ms ease;
+}
+
+.vault-bridges-sidebar-btn:hover:not(:disabled) {
+	background: var(--interactive-hover);
+}
+
+.vault-bridges-sidebar-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.vault-bridges-sidebar-btn.is-cta {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.vault-bridges-sidebar-btn.is-cta:hover:not(:disabled) {
+	background: var(--interactive-accent-hover, var(--interactive-accent));
+	filter: brightness(1.08);
+}
+
+.vault-bridges-sidebar-btn svg {
+	width: 13px;
+	height: 13px;
+}
+
+/* Summary row (status text / changes pill) */
+.vault-bridges-sidebar-card-summary {
+	padding: 4px 10px 5px;
+	background: var(--background-primary);
+	min-height: 22px;
+	display: flex;
+	align-items: center;
+}
+
+.vault-bridges-sidebar-status-text {
+	font-size: var(--font-ui-smaller, 11px);
+	font-style: italic;
+}
+
+.vault-bridges-sidebar-status-text.is-clean {
+	color: var(--text-faint);
+}
+
+.vault-bridges-sidebar-status-text.is-syncing {
+	color: var(--text-muted);
+}
+
+.vault-bridges-sidebar-status-text.is-error {
+	color: var(--text-error);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: help;
+}
+
+.vault-bridges-sidebar-changes-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 1px 8px;
+	height: 20px;
+	background: color-mix(in srgb, var(--color-orange, #e8a029) 15%, transparent);
+	color: var(--color-orange, #e8a029);
+	border: 1px solid color-mix(in srgb, var(--color-orange, #e8a029) 40%, transparent);
+	border-radius: 10px;
+	cursor: pointer;
+	font-size: var(--font-ui-smaller, 11px);
+	font-family: inherit;
+	white-space: nowrap;
+	transition: background 80ms ease;
+}
+
+.vault-bridges-sidebar-changes-pill:hover {
+	background: color-mix(in srgb, var(--color-orange, #e8a029) 25%, transparent);
+}
+
+.vault-bridges-sidebar-pill-chevron {
+	font-size: 0.8em;
+	opacity: 0.7;
+}
+
+/* PR panel inside sidebar card */
+.vault-bridges-sidebar-pr-panel {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 10px;
+	border-top: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+}
+
+.vault-bridges-sidebar-pr-label {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller, 11px);
+	flex: 1;
+}
+
+.vault-bridges-sidebar-pr-btns {
+	display: flex;
+	gap: 4px;
+}
+
+/* Expanded file list */
+.vault-bridges-sidebar-file-list {
+	border-top: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+}
+
+.vault-bridges-sidebar-file-row {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	padding: 3px 10px;
+}
+
+.vault-bridges-sidebar-file-row:hover {
+	background: var(--background-modifier-hover);
+}
+
+.vault-bridges-sidebar-filepath {
+	font-size: var(--font-ui-smaller, 11px);
+	font-family: var(--font-monospace);
+	color: var(--text-normal);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	flex: 1;
+}
+
+.vault-bridges-sidebar-file-open-btn {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	border-radius: 3px;
+	opacity: 0;
+	transition: opacity 0.1s ease;
+}
+
+.vault-bridges-sidebar-file-row:hover .vault-bridges-sidebar-file-open-btn {
+	opacity: 1;
+}
+
+.vault-bridges-sidebar-file-open-btn:hover {
+	color: var(--text-accent);
+	background: var(--background-modifier-hover);
+}
+
+.vault-bridges-sidebar-file-open-btn:disabled {
+	opacity: 0.3;
+	cursor: default;
+}
+
+.vault-bridges-sidebar-file-open-btn svg {
+	width: 11px;
+	height: 11px;
+}
+
+/* Commit message + push footer inside expanded file list */
+.vault-bridges-sidebar-file-footer {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+	padding: 6px 10px;
+	border-top: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+}
+
+.vault-bridges-sidebar-message-input {
+	flex: 1;
+	height: 24px;
+	padding: 2px 7px;
+	font-size: var(--font-ui-smaller, 11px);
+	font-family: inherit;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	outline: none;
+}
+
+.vault-bridges-sidebar-message-input:focus {
+	border-color: var(--interactive-accent);
+}
+
