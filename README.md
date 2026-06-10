@@ -230,6 +230,7 @@ import type { VaultBridgesAPI, AddBridgeOptions } from 'vault-bridges/src/VaultB
 | `pushBridge(id)` | Triggers a push (vault → repo) for the bridge with the given id |
 | `listWorktrees(id)` | Lists all worktrees of the bridge's repo (`WorktreeInfo[]`); `isActive` marks the one the bridge mirrors |
 | `switchWorktree(id, worktreePath, options?)` | Points the bridge at a worktree and re-pulls; pass `null` to return to the main repo; `{ force: true }` skips the dirty-edits confirmation for headless callers |
+| `switchWorktreeForRepo(repoPath, worktreePath, options?)` | Same as `switchWorktree`, but matches bridges by repo path (symlinks resolved) instead of id; flips every bridge of that repo and returns the count switched |
 
 ### `addBridge` options
 
@@ -254,6 +255,18 @@ A bridge normally mirrors the repo's main checkout on its configured branch. Whe
 - **Branch follows the worktree.** While a worktree is active, pull and push target the worktree's checked-out branch, not the bridge's configured branch. Local-only branches (no upstream yet) skip the network pull and get `-u` set on first push.
 - **PR mode is bypassed** while a worktree is active — the worktree branch *is* the feature branch, so pushes go to it directly.
 - A **⎇ branch** badge in the sidebar, command bar, and settings shows when a bridge is tracking a worktree.
+
+### MCP Auto-Flip (Claude Threads integration)
+
+When the [Claude Threads](https://github.com/rbcodelabs/obsidian-claude-threads) plugin is installed, bridges automatically follow Claude agent sessions into and out of worktrees — no manual switching needed:
+
+- When a session runs the `enter_worktree` MCP tool on a bridged repo, the bridge flips to that worktree (branch pill, pulls, and pushes all follow the agent's checkout).
+- When the session runs `exit_worktree`, the bridge snaps back to the main checkout — but only if it was pinned to the worktree that was removed; a bridge you manually pointed elsewhere stays put.
+- With multiple bridges configured, only bridges of the repo whose worktree changed flip. Other repos' bridges are untouched.
+- **How it works:** Claude Threads fires a `claude-threads:worktree-changed` workspace event after each successful worktree change; Vault Bridges listens and matches the event's repo path against each bridge (symlinks resolved). No file watching or polling — both plugins run in the same Obsidian process. Neither plugin requires the other: without a counterpart the event simply has no listener/emitter.
+- **Safety:** if the vault copy has unpushed edits, entering a worktree shows the normal dirty warning; exiting (when the worktree is already deleted and there's nothing left to push to) skips the flip with a warning instead of overwriting your edits.
+- Vault Bridges also fires `vault-bridges:worktree-switched` after every switch (manual or automatic), so other plugins can keep their own state in sync.
+- Disable via **Settings → Vault Bridges → Auto-flip worktrees with Claude sessions**.
 
 ---
 

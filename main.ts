@@ -7,6 +7,7 @@ import { VaultBridgesAPI } from './src/VaultBridgesAPI';
 import { FileCommandBar } from './src/FileCommandBar';
 import { BridgesSidebarView, BRIDGES_SIDEBAR_VIEW_TYPE } from './src/BridgesSidebarView';
 import { WorktreeSwitchModal } from './src/WorktreeSwitchModal';
+import { WorktreeAutoFlip } from './src/WorktreeAutoFlip';
 
 export type { VaultBridgesAPI } from './src/VaultBridgesAPI';
 export type { AddBridgeOptions } from './src/VaultBridgesAPI';
@@ -18,6 +19,7 @@ export default class VaultBridgesPlugin extends Plugin {
 	/** Public API for other plugins. See src/VaultBridgesAPI.ts for full docs. */
 	api!: VaultBridgesAPI;
 	fileCommandBar!: FileCommandBar;
+	worktreeAutoFlip!: WorktreeAutoFlip;
 	sidebarView?: BridgesSidebarView;
 	settingsTab?: VaultBridgesSettingsTab;
 
@@ -28,6 +30,10 @@ export default class VaultBridgesPlugin extends Plugin {
 		this.statusBar = new StatusBarManager(this);
 		this.api = new VaultBridgesAPI(this);
 		this.fileCommandBar = new FileCommandBar(this);
+
+		// MCP auto-flip: follow Claude Threads sessions into/out of worktrees
+		this.worktreeAutoFlip = new WorktreeAutoFlip(this);
+		this.worktreeAutoFlip.register();
 
 		// Register sidebar view
 		this.registerView(BRIDGES_SIDEBAR_VIEW_TYPE, (leaf: WorkspaceLeaf) => {

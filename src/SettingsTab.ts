@@ -32,6 +32,18 @@ export class VaultBridgesSettingsTab extends PluginSettingTab {
 					})
 			);
 
+		new Setting(containerEl)
+			.setName('Auto-flip worktrees with Claude sessions')
+			.setDesc('When a Claude Threads session enters or exits a git worktree of a bridged repo, automatically point the bridge at the same worktree.')
+			.addToggle(toggle =>
+				toggle
+					.setValue(this.plugin.settings.autoFlipWorktrees)
+					.onChange(async value => {
+						this.plugin.settings.autoFlipWorktrees = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
 		// Claude integration section
 		containerEl.createEl('h3', { text: 'Claude Code Integration' });
 		containerEl.createEl('p', {

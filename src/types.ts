@@ -32,11 +32,45 @@ export interface WorktreeInfo {
 	isActive: boolean;
 }
 
+/**
+ * Payload of the `claude-threads:worktree-changed` workspace event, fired by
+ * the Claude Threads plugin when an agent session enters or exits a git
+ * worktree via the `enter_worktree` / `exit_worktree` MCP tools.
+ */
+export interface WorktreeChangeEvent {
+	/** Git root of the repo whose worktree state changed (main checkout path) */
+	repoPath: string;
+	/** Path of the worktree the session moved into, or null when restored to the main checkout */
+	worktreePath: string | null;
+	/** Branch checked out in the new worktree (enter only) */
+	branch?: string;
+	/** On exit: the worktree path that was just removed from disk */
+	removedWorktreePath?: string;
+}
+
+/**
+ * Payload of the `vault-bridges:worktree-switched` workspace event, fired by
+ * this plugin whenever a bridge is pointed at a different worktree (manually
+ * via the UI or automatically via auto-flip). Other plugins (e.g. Claude
+ * Threads) can subscribe to keep their own state in sync.
+ */
+export interface WorktreeSwitchedEvent {
+	bridgeId: string;
+	bridgeName: string;
+	repoPath: string;
+	/** The worktree now tracked, or null when back on the main checkout */
+	worktreePath: string | null;
+	/** Branch now tracked */
+	branch: string;
+}
+
 export interface VaultBridgesSettings {
 	bridges: Bridge[];
 	syncOnStartup: boolean;
 	claudePath: string;
 	claudeEnabled: boolean;
+	/** Auto-flip bridges when a Claude Threads session enters/exits a worktree of a bridged repo */
+	autoFlipWorktrees: boolean;
 }
 
 export const DEFAULT_SETTINGS: VaultBridgesSettings = {
@@ -44,6 +78,7 @@ export const DEFAULT_SETTINGS: VaultBridgesSettings = {
 	syncOnStartup: true,
 	claudePath: '/opt/homebrew/bin/claude',
 	claudeEnabled: true,
+	autoFlipWorktrees: true,
 };
 
 export interface ChangedFile {
