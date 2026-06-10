@@ -82,6 +82,8 @@ The Git branch to pull from and push to. Defaults to `main`.
 
 If your repo uses a different default branch (`master`, `develop`, `trunk`), set this accordingly per bridge.
 
+**The bridge follows the branch the repo is actually checked out on.** If the main checkout is parked on a feature branch (e.g. you ran `git checkout feat/x` in the repo directly instead of in a worktree), the bridge pulls and pushes that branch rather than the configured one. This avoids a cross-branch pull that would otherwise abort with `fatal: Need to specify how to reconcile divergent branches`. A notice tells you when this override is in effect. To go back to the configured branch, check the repo back out onto it (`git checkout main`). When a worktree is pinned via the branch pill, that worktree's branch takes precedence as before.
+
 ### Auto Sync on Startup
 When enabled, this bridge is included in the startup sync batch. This is subject to the global **Sync on startup** toggle also being enabled.
 
