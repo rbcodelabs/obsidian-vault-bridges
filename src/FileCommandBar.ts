@@ -1,6 +1,7 @@
 import { WorkspaceLeaf, MarkdownView, setIcon } from 'obsidian';
 import type VaultBridgesPlugin from '../main';
 import type { Bridge, ChangedFile } from './types';
+import { WorktreeSwitchModal } from './WorktreeSwitchModal';
 
 /**
  * FileCommandBar injects a slim action bar between the view header and the
@@ -145,7 +146,33 @@ export class FileCommandBar {
 		});
 
 		info.createEl('span', { cls: 'vault-bridges-bar-name', text: name });
-		info.createEl('span', { cls: 'vault-bridges-bar-branch', text: branch });
+
+		// Branch pill — clickable: opens the worktree switcher for this bridge
+		const branchPill = info.createEl('button', {
+			cls: bridge.activeWorktreePath
+				? 'vault-bridges-bar-branch is-worktree'
+				: 'vault-bridges-bar-branch',
+			attr: {
+				type: 'button',
+				'aria-label': `Switch worktree for ${name}`,
+				title: bridge.activeWorktreePath
+					? `Tracking worktree: ${bridge.activeWorktreePath}\nClick to switch`
+					: 'Click to switch worktree',
+			},
+		});
+		branchPill.createEl('span', {
+			text: bridge.activeWorktreePath
+				? `⎇ ${bridge.activeWorktreeBranch ?? 'worktree'}`
+				: branch,
+		});
+		branchPill.createEl('span', { cls: 'vault-bridges-pill-chevron', text: ' ▾' });
+		branchPill.disabled = isSyncing;
+		branchPill.addEventListener('click', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			this.closePopdown(leafId);
+			new WorktreeSwitchModal(this.plugin.app, this.plugin, bridge).open();
+		});
 
 		if (isSyncing) {
 			info.createEl('span', { cls: 'vault-bridges-bar-status-label is-syncing', text: 'syncing…' });

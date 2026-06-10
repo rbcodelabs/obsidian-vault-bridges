@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Notice } from 'obsidian';
 import type VaultBridgesPlugin from '../main';
-import type { Bridge, ChangedFile, GitDiagnostics } from './types';
+import type { Bridge, ChangedFile, GitDiagnostics, WorktreeInfo } from './types';
 import { DirtyWarningModal } from './DirtyWarningModal';
 import { classifyGitError } from './GitErrorClassifier';
 import { ClaudeGitSession } from './ClaudeGitSession';
@@ -68,6 +68,149 @@ export class BridgeManager {
 	private notifyUI(): void {
 		this.plugin.fileCommandBar?.update();
 		this.plugin.sidebarView?.update();
+	}
+
+	// ─── Worktrees ────────────────────────────────────────────────────────────
+
+	/**
+	 * The repo path all git and file operations should target: the active
+	 * worktree when one is set, otherwise the main repo checkout.
+	 */
+	effectiveRepoPath(bridge: Bridge): string {
+		return bridge.activeWorktreePath ?? bridge.repoPath;
+	}
+
+	/** Resolve symlinks so paths compare equal (e.g. /var vs /private/var on macOS). */
+	private resolvePath(p: string): string {
+		try {
+			return fs.realpathSync(p);
+		} catch {
+			return p;
+		}
+	}
+
+	/**
+	 * Lists all worktrees of the bridge's repo via `git worktree list --porcelain`.
+	 * The first entry is always the main checkout.
+	 */
+	async listWorktrees(bridge: Bridge): Promise<WorktreeInfo[]> {
+		const { stdout } = await execAsync(
+			`git -C "${shellEsc(bridge.repoPath)}" worktree list --porcelain`,
+			{ timeout: 10000 }
+		);
+
+		const activeResolved = this.resolvePath(this.effectiveRepoPath(bridge));
+
+		return stdout
+			.trim()
+			.split(/\n\n+/)
+			.map((block, i): WorktreeInfo | null => {
+				const lines = block.split('\n');
+				const pathLine = lines.find(l => l.startsWith('worktree '));
+				if (!pathLine) return null;
+				const wtPath = pathLine.slice('worktree '.length).trim();
+				const branchLine = lines.find(l => l.startsWith('branch '));
+				const branch = branchLine
+					? branchLine.slice('branch '.length).replace(/^refs\/heads\//, '').trim()
+					: '';
+				return {
+					path: wtPath,
+					branch,
+					isMain: i === 0,
+					isActive: this.resolvePath(wtPath) === activeResolved,
+				};
+			})
+			.filter((w): w is WorktreeInfo => w !== null);
+	}
+
+	/**
+	 * Re-reads the HEAD branch of the bridge's active worktree, caches it on the
+	 * bridge, and returns it. Falls back to `bridge.branch` when no worktree is
+	 * active. Throws on a detached HEAD.
+	 */
+	async refreshWorktreeBranch(bridge: Bridge): Promise<string> {
+		if (!bridge.activeWorktreePath) return bridge.branch;
+
+		const { stdout } = await execAsync(
+			`git -C "${shellEsc(bridge.activeWorktreePath)}" rev-parse --abbrev-ref HEAD`,
+			{ timeout: 10000 }
+		);
+		const branch = stdout.trim();
+		if (!branch || branch === 'HEAD') {
+			throw new Error(`Worktree is on a detached HEAD: ${bridge.activeWorktreePath}`);
+		}
+		bridge.activeWorktreeBranch = branch;
+		return branch;
+	}
+
+	/** True when the current HEAD branch at repoPath has an upstream configured. */
+	private async hasUpstream(repoPath: string): Promise<boolean> {
+		try {
+			await execAsync(
+				`git -C "${shellEsc(repoPath)}" rev-parse --abbrev-ref --symbolic-full-name @{u}`,
+				{ timeout: 10000 }
+			);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * Points the bridge at a different worktree (or back at the main repo when
+	 * `worktreePath` is null) and re-pulls so the vault copy reflects the newly
+	 * selected checkout. If the vault copy has unsaved edits the dirty-warning
+	 * modal is shown first (unless `force` is true).
+	 */
+	async switchWorktree(bridge: Bridge, worktreePath: string | null, force = false): Promise<void> {
+		if (!force && this.checkDirty(bridge)) {
+			bridge.isDirty = true;
+			await this.plugin.saveSettings();
+			new DirtyWarningModal(this.plugin.app, bridge, {
+				onPushThenPull: async () => {
+					await this.pushBridge(bridge);
+					await this.switchWorktree(bridge, worktreePath, true);
+				},
+				onPullAnyway: async () => {
+					await this.switchWorktree(bridge, worktreePath, true);
+				},
+			}, {
+				body: `"${bridge.name}" has vault edits that haven't been pushed yet. Switching worktrees will overwrite those edits with the selected checkout's state.`,
+				primary: 'Push then Switch',
+				warning: 'Switch anyway',
+			}).open();
+			return;
+		}
+
+		if (worktreePath) {
+			const worktrees = await this.listWorktrees(bridge);
+			const resolved = this.resolvePath(worktreePath);
+			const match = worktrees.find(w => this.resolvePath(w.path) === resolved);
+			if (!match) {
+				throw new Error(`Not a linked worktree of ${bridge.repoPath}: ${worktreePath}`);
+			}
+			if (match.isMain) {
+				// Selecting the main checkout is the same as clearing the override
+				worktreePath = null;
+			} else {
+				bridge.activeWorktreePath = match.path;
+				bridge.activeWorktreeBranch = match.branch || undefined;
+			}
+		}
+		if (!worktreePath) {
+			bridge.activeWorktreePath = undefined;
+			bridge.activeWorktreeBranch = undefined;
+		}
+
+		await this.plugin.saveSettings();
+		const target = bridge.activeWorktreePath
+			? `worktree "${bridge.activeWorktreeBranch ?? bridge.activeWorktreePath}"`
+			: `main repo (${bridge.branch})`;
+		new Notice(`Vault Bridges: "${bridge.name}" now tracking ${target} — re-pulling…`);
+
+		// Forced re-pull: copies the selected checkout into the vault and
+		// rebuilds the manifest so dirty tracking is relative to the new base.
+		await this.syncBridge(bridge, true);
 	}
 
 	// ─── Manifest / dirty tracking ────────────────────────────────────────────
@@ -193,7 +336,7 @@ export class BridgeManager {
 		const { claudePath, claudeEnabled } = this.plugin.settings;
 		if (!claudeEnabled || !claudePath) return;
 
-		const diag = await this.gatherDiagnostics(bridge.repoPath, errorText, operation);
+		const diag = await this.gatherDiagnostics(this.effectiveRepoPath(bridge), errorText, operation);
 
 		// For well-understood errors, a targeted hint is more useful than Claude analysis
 		if (diag.errorType === 'auth_failure') {
@@ -207,7 +350,7 @@ export class BridgeManager {
 		if (diag.errorType === 'repo_dirty') {
 			new Notice(
 				`Vault Bridges: "${bridge.name}" — the repo has uncommitted changes blocking the pull. ` +
-				`Run \`git stash\` in ${bridge.repoPath} then try again.`,
+				`Run \`git stash\` in ${this.effectiveRepoPath(bridge)} then try again.`,
 				12000
 			);
 			return;
@@ -356,18 +499,25 @@ export class BridgeManager {
 	}
 
 	private async gitPull(bridge: Bridge): Promise<void> {
-		if (!fs.existsSync(bridge.repoPath)) {
-			throw new Error(`Repo path does not exist: ${bridge.repoPath}`);
+		const repoPath = this.effectiveRepoPath(bridge);
+		if (!fs.existsSync(repoPath)) {
+			throw new Error(`Repo path does not exist: ${repoPath}`);
 		}
 
-		const gitDir = path.join(bridge.repoPath, '.git');
+		// In a linked worktree `.git` is a file (a pointer), not a directory —
+		// existsSync covers both cases.
+		const gitDir = path.join(repoPath, '.git');
 		if (!fs.existsSync(gitDir)) {
-			throw new Error(`Not a git repository: ${bridge.repoPath}`);
+			throw new Error(`Not a git repository: ${repoPath}`);
 		}
+
+		// On a worktree the branch is whatever the worktree has checked out,
+		// not the configured bridge branch.
+		const branch = await this.refreshWorktreeBranch(bridge);
 
 		// Validate branch contains no shell metacharacters before interpolation
-		if (!/^[a-zA-Z0-9._\-/]+$/.test(bridge.branch)) {
-			throw new Error(`Invalid branch name: "${bridge.branch}"`);
+		if (!/^[a-zA-Z0-9._\-/]+$/.test(branch)) {
+			throw new Error(`Invalid branch name: "${branch}"`);
 		}
 
 		// Auto-stash any uncommitted repo-side changes so the pull can proceed.
@@ -376,12 +526,12 @@ export class BridgeManager {
 		let stashed = false;
 		try {
 			const { stdout: statusOut } = await execAsync(
-				`git -C "${bridge.repoPath}" status --porcelain`,
+				`git -C "${repoPath}" status --porcelain`,
 				{ timeout: 10000 }
 			);
 			if (statusOut.trim().length > 0) {
 				const { stdout: stashOut } = await execAsync(
-					`git -C "${bridge.repoPath}" stash push --include-untracked -m "vault-bridges auto-stash"`,
+					`git -C "${repoPath}" stash push --include-untracked -m "vault-bridges auto-stash"`,
 					{ timeout: 15000 }
 				);
 				stashed = !stashOut.trim().startsWith('No local changes');
@@ -391,37 +541,50 @@ export class BridgeManager {
 			console.warn(`Vault Bridges: auto-stash check failed for "${bridge.name}":`, stashCheckErr);
 		}
 
-		try {
-			const { stdout, stderr } = await execAsync(
-				`git -C "${bridge.repoPath}" pull origin "${bridge.branch}"`,
-				{ timeout: 30000 }
+		// A worktree branch is often local-only (no upstream yet). In that case
+		// there is nothing to pull from the network — copying the checkout into
+		// the vault is all that's needed.
+		const skipNetworkPull = bridge.activeWorktreePath
+			? !(await this.hasUpstream(repoPath))
+			: false;
+
+		if (skipNetworkPull) {
+			console.log(
+				`Vault Bridges: "${bridge.name}" — worktree branch "${branch}" has no upstream; skipping network pull.`
 			);
-			console.log(`Vault Bridges: Pulled "${bridge.name}":`, stdout || stderr);
-		} catch (err) {
-			// Restore stash on pull failure so no work is lost
-			if (stashed) {
-				await execAsync(
-					`git -C "${bridge.repoPath}" stash pop`,
-					{ timeout: 15000 }
-				).catch(popErr =>
-					console.warn(`Vault Bridges: stash pop after failed pull for "${bridge.name}":`, popErr)
+		} else {
+			try {
+				const { stdout, stderr } = await execAsync(
+					`git -C "${repoPath}" pull origin "${branch}"`,
+					{ timeout: 30000 }
 				);
+				console.log(`Vault Bridges: Pulled "${bridge.name}":`, stdout || stderr);
+			} catch (err) {
+				// Restore stash on pull failure so no work is lost
+				if (stashed) {
+					await execAsync(
+						`git -C "${repoPath}" stash pop`,
+						{ timeout: 15000 }
+					).catch(popErr =>
+						console.warn(`Vault Bridges: stash pop after failed pull for "${bridge.name}":`, popErr)
+					);
+				}
+				throw new Error(`git pull failed: ${err instanceof Error ? err.message : String(err)}`);
 			}
-			throw new Error(`git pull failed: ${err instanceof Error ? err.message : String(err)}`);
 		}
 
 		// Restore stashed changes after a successful pull
 		if (stashed) {
 			try {
 				await execAsync(
-					`git -C "${bridge.repoPath}" stash pop`,
+					`git -C "${repoPath}" stash pop`,
 					{ timeout: 15000 }
 				);
 			} catch (stashPopErr) {
 				// Pull succeeded but stash pop hit a conflict — warn without failing the sync
 				new Notice(
 					`Vault Bridges: "${bridge.name}" — pull succeeded but stash pop failed. ` +
-					`Resolve the conflict manually in: ${bridge.repoPath}`,
+					`Resolve the conflict manually in: ${repoPath}`,
 					12000
 				);
 				console.error(`Vault Bridges: stash pop failed for "${bridge.name}":`, stashPopErr);
@@ -430,9 +593,10 @@ export class BridgeManager {
 	}
 
 	async copyFiles(bridge: Bridge): Promise<void> {
+		const repoPath = this.effectiveRepoPath(bridge);
 		const sourcePath = bridge.sourcePath
-			? path.join(bridge.repoPath, bridge.sourcePath)
-			: bridge.repoPath;
+			? path.join(repoPath, bridge.sourcePath)
+			: repoPath;
 
 		const destPath = path.join(this.vaultBasePath, bridge.vaultPath);
 
@@ -538,15 +702,32 @@ export class BridgeManager {
 		// clean it up on error.
 		let prBranch: string | undefined;
 
+		const repoPath = this.effectiveRepoPath(bridge);
+		const onWorktree = !!bridge.activeWorktreePath;
+
 		try {
+			// On a worktree the commit/push target is the worktree's checked-out
+			// branch, not the configured bridge branch.
+			const targetBranch = await this.refreshWorktreeBranch(bridge);
+
 			// Validate branch
-			if (!/^[a-zA-Z0-9._\-/]+$/.test(bridge.branch)) {
-				throw new Error(`Invalid branch name: "${bridge.branch}"`);
+			if (!/^[a-zA-Z0-9._\-/]+$/.test(targetBranch)) {
+				throw new Error(`Invalid branch name: "${targetBranch}"`);
 			}
 
 			// PR mode: fetch origin and create a fresh feature branch BEFORE
 			// touching any files so the working tree is based on the latest remote.
-			if (bridge.prMode) {
+			//
+			// Skipped while a worktree is active: git refuses to check out a branch
+			// already checked out elsewhere, and the worktree branch *is* the
+			// feature branch — pushing it directly is the natural PR flow.
+			if (bridge.prMode && onWorktree) {
+				new Notice(
+					`Vault Bridges: "${bridge.name}" — PR mode is bypassed while a worktree is active; pushing directly to "${targetBranch}".`,
+					8000
+				);
+			}
+			if (bridge.prMode && !onWorktree) {
 				await execAsync(
 					`git -C "${bridge.repoPath}" fetch origin "${bridge.branch}"`,
 					{ timeout: 30000 }
@@ -560,8 +741,8 @@ export class BridgeManager {
 			}
 
 			const sourcePath = bridge.sourcePath
-				? path.join(bridge.repoPath, bridge.sourcePath)
-				: bridge.repoPath;
+				? path.join(repoPath, bridge.sourcePath)
+				: repoPath;
 			const vaultPath = path.join(this.vaultBasePath, bridge.vaultPath);
 
 			if (!fs.existsSync(vaultPath)) {
@@ -591,7 +772,7 @@ export class BridgeManager {
 				}
 
 				const quoted = stagedPaths.map(p => `"${shellEsc(p)}"`).join(' ');
-				await execAsync(`git -C "${bridge.repoPath}" add -- ${quoted}`, { timeout: 15000 });
+				await execAsync(`git -C "${repoPath}" add -- ${quoted}`, { timeout: 15000 });
 			} else {
 				// ── Full push: sync vault dir → repo ─────────────────────────────
 				const stat = fs.statSync(vaultPath);
@@ -614,12 +795,12 @@ export class BridgeManager {
 				} else {
 					fs.copyFileSync(vaultPath, sourcePath);
 				}
-				await execAsync(`git -C "${bridge.repoPath}" add -A`, { timeout: 15000 });
+				await execAsync(`git -C "${repoPath}" add -A`, { timeout: 15000 });
 			}
 
 			// Check if anything actually got staged
 			const { stdout: diffOut } = await execAsync(
-				`git -C "${bridge.repoPath}" diff --cached --name-only`,
+				`git -C "${repoPath}" diff --cached --name-only`,
 				{ timeout: 15000 }
 			);
 
@@ -645,7 +826,7 @@ export class BridgeManager {
 			const timestamp = new Date().toLocaleString();
 			const rawMsg = commitMessage?.trim() || `Update from Obsidian vault (${timestamp})`;
 			await execAsync(
-				`git -C "${bridge.repoPath}" commit -m "${shellEsc(rawMsg)}"`,
+				`git -C "${repoPath}" commit -m "${shellEsc(rawMsg)}"`,
 				{ timeout: 15000 }
 			);
 
@@ -701,9 +882,11 @@ export class BridgeManager {
 					10000
 				);
 			} else {
-				// ── Direct push (original behaviour) ─────────────────────────────
+				// ── Direct push ───────────────────────────────────────────────────
+				// `-u` sets the upstream on first push of a local-only worktree
+				// branch and is a no-op when the upstream already exists.
 				await execAsync(
-					`git -C "${bridge.repoPath}" push origin "${bridge.branch}"`,
+					`git -C "${repoPath}" push -u origin "${targetBranch}"`,
 					{ timeout: 30000 }
 				);
 
@@ -714,7 +897,7 @@ export class BridgeManager {
 				bridge.lastError = undefined;
 				if (!selectedFiles) this.recordManifest(bridge);
 
-				new Notice(`Vault Bridges: ✓ "${bridge.name}" — pushed ${fileCount} to ${bridge.branch}`);
+				new Notice(`Vault Bridges: ✓ "${bridge.name}" — pushed ${fileCount} to ${targetBranch}`);
 			}
 		} catch (err) {
 			// On error in PR mode, try to clean up the feature branch and return

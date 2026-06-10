@@ -14,8 +14,22 @@ export interface Bridge {
 	prStatus?: 'open' | 'merged' | 'closed' | 'checking';
 	fileManifest?: Record<string, string>; // vault-relative path → SHA-1 hash, recorded after each pull
 	isDirty?: boolean;     // true if vault files have been modified since last pull
+	activeWorktreePath?: string;   // when set, all git/file ops target this linked worktree instead of repoPath
+	activeWorktreeBranch?: string; // cached HEAD branch of the active worktree (refreshed on pull/push)
 	status: 'ok' | 'error' | 'syncing' | 'unlinked' | 'unknown';
 	lastError?: string;
+}
+
+/** A single entry from `git worktree list --porcelain`. */
+export interface WorktreeInfo {
+	/** Absolute path of the worktree checkout */
+	path: string;
+	/** Branch checked out in this worktree ('' when detached HEAD) */
+	branch: string;
+	/** True for the main repo checkout (first entry in the list) */
+	isMain: boolean;
+	/** True when this worktree is the bridge's currently active target */
+	isActive: boolean;
 }
 
 export interface VaultBridgesSettings {

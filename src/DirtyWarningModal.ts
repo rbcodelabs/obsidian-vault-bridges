@@ -6,11 +6,19 @@ export interface DirtyWarningCallbacks {
 	onPullAnyway: () => Promise<void>;
 }
 
+/** Optional copy overrides so the modal can be reused for non-pull actions (e.g. worktree switching). */
+export interface DirtyWarningLabels {
+	body?: string;
+	primary?: string;
+	warning?: string;
+}
+
 export class DirtyWarningModal extends Modal {
 	constructor(
 		app: App,
 		private bridge: Bridge,
 		private callbacks: DirtyWarningCallbacks,
+		private labels: DirtyWarningLabels = {},
 	) {
 		super(app);
 	}
@@ -20,7 +28,8 @@ export class DirtyWarningModal extends Modal {
 
 		contentEl.createEl('h2', { text: '⚠️ Unsaved Edits Detected' });
 		contentEl.createEl('p', {
-			text: `"${this.bridge.name}" has vault edits that haven't been pushed yet. Pulling now will overwrite those edits with the repo's current state.`,
+			text: this.labels.body ??
+				`"${this.bridge.name}" has vault edits that haven't been pushed yet. Pulling now will overwrite those edits with the repo's current state.`,
 		});
 		contentEl.createEl('p', {
 			text: 'What would you like to do?',
@@ -30,8 +39,8 @@ export class DirtyWarningModal extends Modal {
 		new Setting(contentEl)
 			.addButton(btn =>
 				btn
-					.setButtonText('Push then Pull')
-					.setTooltip('Commit and push your vault edits to the repo, then pull the latest')
+					.setButtonText(this.labels.primary ?? 'Push then Pull')
+					.setTooltip('Commit and push your vault edits to the repo first')
 					.setCta()
 					.onClick(async () => {
 						this.close();
@@ -40,7 +49,7 @@ export class DirtyWarningModal extends Modal {
 			)
 			.addButton(btn =>
 				btn
-					.setButtonText('Pull anyway')
+					.setButtonText(this.labels.warning ?? 'Pull anyway')
 					.setTooltip('Discard your vault edits and overwrite with the repo state')
 					.setWarning()
 					.onClick(async () => {

@@ -42,6 +42,7 @@ Vault Bridges adds a third option: a managed, bidirectional bridge that stays fr
 - **Subfolder support** — bridge a whole repo or just a subdirectory (e.g. `docs/adr`)
 - **Per-bridge controls** — pull, push, edit, or remove each bridge independently; separate pulled/pushed timestamps at a glance
 - **Bulk actions** — Pull All, Push All, and Rebuild All Copies from the settings panel
+- **Worktree switching** — point a bridge at any linked git worktree of its repo; the vault copy follows that checkout's branch, pulls skip the network for local-only branches, and pushes go to the worktree's branch
 - **Status bar indicator** — see bridge health at a glance; click to open settings
 - **Desktop only** — requires local filesystem access; mobile is not supported
 
@@ -182,12 +183,13 @@ Individual bridge pull and push are also available from the **Settings → Vault
 
 ### Per-bridge commands
 
-For every configured bridge, two commands are registered automatically:
+For every configured bridge, three commands are registered automatically:
 
 | Command pattern | Description |
 |---|---|
 | `Vault Bridges: Pull "<bridge name>"` | `git pull` then copy files into the vault for this bridge |
 | `Vault Bridges: Push "<bridge name>"` | Copy vault files back to the repo, commit, and push for this bridge |
+| `Vault Bridges: Switch Worktree for "<bridge name>"` | Pick which worktree of the repo this bridge mirrors (lists them via `git worktree list`) |
 
 Per-bridge commands appear in the palette immediately when a bridge is added (no restart required) and update their label if you rename a bridge. You can assign hotkeys to them in **Settings → Hotkeys** just like any other command.
 
@@ -226,6 +228,8 @@ import type { VaultBridgesAPI, AddBridgeOptions } from 'vault-bridges/src/VaultB
 | `removeBridge(id)` | Removes a bridge by id; no-ops if not found |
 | `syncBridge(id)` | Triggers a pull (repo → vault) for the bridge with the given id |
 | `pushBridge(id)` | Triggers a push (vault → repo) for the bridge with the given id |
+| `listWorktrees(id)` | Lists all worktrees of the bridge's repo (`WorktreeInfo[]`); `isActive` marks the one the bridge mirrors |
+| `switchWorktree(id, worktreePath, options?)` | Points the bridge at a worktree and re-pulls; pass `null` to return to the main repo; `{ force: true }` skips the dirty-edits confirmation for headless callers |
 
 ### `addBridge` options
 
@@ -241,6 +245,18 @@ import type { VaultBridgesAPI, AddBridgeOptions } from 'vault-bridges/src/VaultB
 
 ---
 
+## Worktree Switching
+
+A bridge normally mirrors the repo's main checkout on its configured branch. When you (or a coding agent) work in a [git worktree](https://git-scm.com/docs/git-worktree), you can flip the bridge to mirror that worktree instead — the bridged vault folder then tracks the feature branch, and snaps back to main when you switch back.
+
+- **Switch via** the branch pill in the document command bar (click it to open the switcher), the command palette (`Switch Worktree for "<bridge>"`), the branch button in Settings → Vault Bridges, or the public API.
+- **Switching forces a re-pull** so the vault copy reflects the selected checkout. If the vault has unsaved edits you'll get the usual dirty warning first (Push then Switch / Switch anyway / Cancel).
+- **Branch follows the worktree.** While a worktree is active, pull and push target the worktree's checked-out branch, not the bridge's configured branch. Local-only branches (no upstream yet) skip the network pull and get `-u` set on first push.
+- **PR mode is bypassed** while a worktree is active — the worktree branch *is* the feature branch, so pushes go to it directly.
+- A **⎇ branch** badge in the sidebar, command bar, and settings shows when a bridge is tracking a worktree.
+
+---
+
 ## Known Limitations
 
 - **Repo must be cloned locally** — the plugin does not clone repos from a URL. You need to have the repo on disk already.
@@ -248,6 +264,7 @@ import type { VaultBridgesAPI, AddBridgeOptions } from 'vault-bridges/src/VaultB
 - **Vault move** — if you move your vault, run `Vault Bridges: Rebuild All Copies` to re-copy files at the new location.
 - **Obsidian Git coexistence** — if your vault is itself a git repo managed by Obsidian Git, add your bridge destination paths to the vault's `.gitignore` to prevent double-tracking.
 - **The command bar only appears for bridged files** — opening a regular vault note (outside any bridge destination) shows no bar.
+- **Detached-HEAD worktrees can't be tracked** — a worktree must have a branch checked out for the bridge to follow it.
 
 ---
 

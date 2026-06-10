@@ -6,6 +6,7 @@ import { StatusBarManager } from './src/StatusBar';
 import { VaultBridgesAPI } from './src/VaultBridgesAPI';
 import { FileCommandBar } from './src/FileCommandBar';
 import { BridgesSidebarView, BRIDGES_SIDEBAR_VIEW_TYPE } from './src/BridgesSidebarView';
+import { WorktreeSwitchModal } from './src/WorktreeSwitchModal';
 
 export type { VaultBridgesAPI } from './src/VaultBridgesAPI';
 export type { AddBridgeOptions } from './src/VaultBridgesAPI';
@@ -126,6 +127,15 @@ export default class VaultBridgesPlugin extends Plugin {
 			callback: () => {
 				const b = this.settings.bridges.find(b => b.id === id);
 				if (b) this.bridgeManager.pushBridge(b);
+			},
+		});
+
+		this.addCommand({
+			id: `switch-worktree-${id}`,
+			name: `Switch Worktree for "${bridge.name}"`,
+			callback: () => {
+				const b = this.settings.bridges.find(b => b.id === id);
+				if (b) new WorktreeSwitchModal(this.app, this, b).open();
 			},
 		});
 	}
