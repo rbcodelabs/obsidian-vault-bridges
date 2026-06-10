@@ -94,7 +94,7 @@ function makePlugin(): VaultBridgesPlugin {
  * Routes exec calls by command content. `hasUpstream` controls whether the
  * `@{u}` upstream probe succeeds or fails.
  */
-function setupExecRouter({ hasUpstream = true, headBranch = WT_BRANCH, stagedChanges = false } = {}) {
+function setupExecRouter({ hasUpstream = true, headBranch = WT_BRANCH, mainHeadBranch = 'main', stagedChanges = false } = {}) {
 	vi.mocked(exec).mockImplementation((cmd: any, opts: any, cb: any) => {
 		if (cmd.includes('worktree list --porcelain')) {
 			cb(null, { stdout: PORCELAIN, stderr: '' });
@@ -102,7 +102,10 @@ function setupExecRouter({ hasUpstream = true, headBranch = WT_BRANCH, stagedCha
 			if (hasUpstream) cb(null, { stdout: 'origin/some-branch', stderr: '' });
 			else cb(new Error('fatal: no upstream configured'), { stdout: '', stderr: '' });
 		} else if (cmd.includes('rev-parse --abbrev-ref HEAD')) {
-			cb(null, { stdout: `${headBranch}\n`, stderr: '' });
+			// The main checkout (`/repo/path`) and a linked worktree can be on
+			// different branches — route by the `-C` target path.
+			const branch = cmd.includes(WT_PATH) ? headBranch : mainHeadBranch;
+			cb(null, { stdout: `${branch}\n`, stderr: '' });
 		} else if (cmd.includes('diff --cached --name-only')) {
 			cb(null, { stdout: stagedChanges ? 'file.md' : '', stderr: '' });
 		} else {
@@ -370,6 +373,89 @@ describe('BridgeManager.syncBridge — on a worktree', () => {
 
 		expect(bridge.status).toBe('error');
 		expect(bridge.lastError).toMatch(/detached HEAD/);
+	});
+});
+
+// ─── gitPull when the main checkout is parked on a different branch ──────────
+
+describe('BridgeManager.syncBridge — main checkout on a non-configured branch', () => {
+	it('follows the checked-out branch instead of the configured branch', async () => {
+		const plugin = makePlugin();
+		const manager = new BridgeManager(plugin);
+		const bridge = makeBridge({ branch: 'main' }); // no worktree
+		plugin.settings.bridges.push(bridge);
+		// Main repo is parked on a feature branch with an upstream.
+		setupExecRouter({ hasUpstream: true, mainHeadBranch: 'feat/parked' });
+
+		await manager.syncBridge(bridge, true);
+
+		expect(bridge.status).toBe('ok');
+		expect(execCalls().some(cmd =>
+			cmd.includes('git -C "/repo/path" pull origin "feat/parked"')
+		)).toBe(true);
+		// Never attempts the doomed cross-branch pull of the configured branch.
+		expect(execCalls().some(cmd => cmd.includes('pull origin "main"'))).toBe(false);
+	});
+
+	it('skips the network pull when the parked branch has no upstream', async () => {
+		const plugin = makePlugin();
+		const manager = new BridgeManager(plugin);
+		const bridge = makeBridge({ branch: 'main' });
+		plugin.settings.bridges.push(bridge);
+		setupExecRouter({ hasUpstream: false, mainHeadBranch: 'feat/local-only' });
+
+		await manager.syncBridge(bridge, true);
+
+		expect(bridge.status).toBe('ok');
+		expect(execCalls().some(cmd => cmd.includes('pull origin'))).toBe(false);
+	});
+
+	it('pulls the configured branch normally when the checkout is on it', async () => {
+		const plugin = makePlugin();
+		const manager = new BridgeManager(plugin);
+		const bridge = makeBridge({ branch: 'main' });
+		plugin.settings.bridges.push(bridge);
+		setupExecRouter({ hasUpstream: true, mainHeadBranch: 'main' });
+
+		await manager.syncBridge(bridge, true);
+
+		expect(bridge.status).toBe('ok');
+		expect(execCalls().some(cmd =>
+			cmd.includes('git -C "/repo/path" pull origin "main"')
+		)).toBe(true);
+	});
+
+	it('falls back to the configured branch on a detached HEAD', async () => {
+		const plugin = makePlugin();
+		const manager = new BridgeManager(plugin);
+		const bridge = makeBridge({ branch: 'main' });
+		plugin.settings.bridges.push(bridge);
+		// A detached main checkout reports "HEAD" from rev-parse --abbrev-ref.
+		setupExecRouter({ hasUpstream: true, mainHeadBranch: 'HEAD' });
+
+		await manager.syncBridge(bridge, true);
+
+		expect(bridge.status).toBe('ok');
+		expect(execCalls().some(cmd =>
+			cmd.includes('git -C "/repo/path" pull origin "main"')
+		)).toBe(true);
+	});
+
+	it('pushes the checked-out branch when parked on a non-configured branch', async () => {
+		const plugin = makePlugin();
+		const manager = new BridgeManager(plugin);
+		const bridge = makeBridge({ branch: 'main' }); // no worktree, no prMode
+		plugin.settings.bridges.push(bridge);
+		setupExecRouter({ stagedChanges: true, mainHeadBranch: 'feat/parked' });
+
+		await manager.pushBridge(bridge);
+
+		expect(bridge.status).toBe('ok');
+		const calls = execCalls();
+		expect(calls.some(cmd =>
+			cmd.includes('git -C "/repo/path" push -u origin "feat/parked"')
+		)).toBe(true);
+		expect(calls.some(cmd => cmd.includes('push -u origin "main"'))).toBe(false);
 	});
 });
 

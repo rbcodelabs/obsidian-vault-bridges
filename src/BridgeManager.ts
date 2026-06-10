@@ -124,12 +124,34 @@ export class BridgeManager {
 	}
 
 	/**
-	 * Re-reads the HEAD branch of the bridge's active worktree, caches it on the
-	 * bridge, and returns it. Falls back to `bridge.branch` when no worktree is
-	 * active. Throws on a detached HEAD.
+	 * Resolves the branch that pull/push should target.
+	 *
+	 * - With an active worktree: the worktree's checked-out branch (cached on the
+	 *   bridge). Throws on a detached HEAD.
+	 * - Without a worktree: the branch the *main checkout* is actually on. When
+	 *   that differs from the configured `bridge.branch` (e.g. the repo is parked
+	 *   on a feature branch instead of `main`), following the checked-out branch
+	 *   keeps the vault in sync with the work in progress and avoids a doomed
+	 *   cross-branch pull that aborts with "need to reconcile divergent branches".
+	 *   Falls back to the configured branch on a detached HEAD or any git error.
 	 */
 	async refreshWorktreeBranch(bridge: Bridge): Promise<string> {
-		if (!bridge.activeWorktreePath) return bridge.branch;
+		if (!bridge.activeWorktreePath) {
+			try {
+				const { stdout } = await execAsync(
+					`git -C "${shellEsc(bridge.repoPath)}" rev-parse --abbrev-ref HEAD`,
+					{ timeout: 10000 }
+				);
+				const head = stdout.trim();
+				// A detached HEAD has no branch to follow — pull the configured one.
+				if (!head || head === 'HEAD') return bridge.branch;
+				return head;
+			} catch {
+				// Repo unreadable here; let the configured branch drive and surface
+				// any real error downstream in the pull/push itself.
+				return bridge.branch;
+			}
+		}
 
 		const { stdout } = await execAsync(
 			`git -C "${shellEsc(bridge.activeWorktreePath)}" rev-parse --abbrev-ref HEAD`,
@@ -524,13 +546,29 @@ export class BridgeManager {
 			throw new Error(`Not a git repository: ${repoPath}`);
 		}
 
-		// On a worktree the branch is whatever the worktree has checked out,
-		// not the configured bridge branch.
+		// The pull target is whatever branch the checkout (worktree or main repo)
+		// is actually on, not the configured bridge branch.
 		const branch = await this.refreshWorktreeBranch(bridge);
 
 		// Validate branch contains no shell metacharacters before interpolation
 		if (!/^[a-zA-Z0-9._\-/]+$/.test(branch)) {
 			throw new Error(`Invalid branch name: "${branch}"`);
+		}
+
+		// The main checkout is parked on a branch other than the configured one
+		// (no worktree pinned). We follow the checked-out branch rather than
+		// attempting a cross-branch pull. Surface it so the override is visible.
+		const followingCheckout = !bridge.activeWorktreePath && branch !== bridge.branch;
+		if (followingCheckout) {
+			new Notice(
+				`Vault Bridges: "${bridge.name}" — repo is on "${branch}", not the configured "${bridge.branch}". ` +
+				`Pulling "${branch}" to follow the checked-out branch.`,
+				8000
+			);
+			console.log(
+				`Vault Bridges: "${bridge.name}" — following checked-out branch "${branch}" ` +
+				`instead of configured "${bridge.branch}".`
+			);
 		}
 
 		// Auto-stash any uncommitted repo-side changes so the pull can proceed.
@@ -554,16 +592,17 @@ export class BridgeManager {
 			console.warn(`Vault Bridges: auto-stash check failed for "${bridge.name}":`, stashCheckErr);
 		}
 
-		// A worktree branch is often local-only (no upstream yet). In that case
-		// there is nothing to pull from the network — copying the checkout into
-		// the vault is all that's needed.
-		const skipNetworkPull = bridge.activeWorktreePath
+		// A worktree branch — or a main checkout parked on a local-only feature
+		// branch — often has no upstream yet. In that case there is nothing to
+		// pull from the network; copying the checkout into the vault is all that's
+		// needed. The configured-branch case keeps pulling unconditionally.
+		const skipNetworkPull = (bridge.activeWorktreePath || followingCheckout)
 			? !(await this.hasUpstream(repoPath))
 			: false;
 
 		if (skipNetworkPull) {
 			console.log(
-				`Vault Bridges: "${bridge.name}" — worktree branch "${branch}" has no upstream; skipping network pull.`
+				`Vault Bridges: "${bridge.name}" — branch "${branch}" has no upstream; skipping network pull.`
 			);
 		} else {
 			try {

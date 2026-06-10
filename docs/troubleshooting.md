@@ -79,6 +79,7 @@ Source subfolder:  docs                              ← subfolder goes here
 | Merge conflict | Resolve the conflict in the repo via terminal, then sync again |
 | Wrong branch name | Edit the bridge and correct the **Branch** field |
 | Remote doesn't exist | The repo may be local-only; verify with `git remote -v` |
+| `Need to specify how to reconcile divergent branches` | The repo is checked out on a branch other than the bridge's configured one. As of the cross-branch-pull fix the bridge follows the checked-out branch automatically; if you still hit this on an older build, run `git checkout <configured-branch>` in the repo, or pin the worktree via the branch pill |
 
 For authentication issues, after resolving them in the terminal, the next sync from Vault Bridges will succeed (it inherits your system's Git credential store).
 
