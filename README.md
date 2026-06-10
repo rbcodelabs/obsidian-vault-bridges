@@ -249,7 +249,7 @@ import type { VaultBridgesAPI, AddBridgeOptions } from 'vault-bridges/src/VaultB
 
 A bridge normally mirrors the repo's main checkout on its configured branch. When you (or a coding agent) work in a [git worktree](https://git-scm.com/docs/git-worktree), you can flip the bridge to mirror that worktree instead — the bridged vault folder then tracks the feature branch, and snaps back to main when you switch back.
 
-- **Switch via** the command palette (`Switch Worktree for "<bridge>"`), the branch button in Settings → Vault Bridges, or the public API.
+- **Switch via** the branch pill in the document command bar (click it to open the switcher), the command palette (`Switch Worktree for "<bridge>"`), the branch button in Settings → Vault Bridges, or the public API.
 - **Switching forces a re-pull** so the vault copy reflects the selected checkout. If the vault has unsaved edits you'll get the usual dirty warning first (Push then Switch / Switch anyway / Cancel).
 - **Branch follows the worktree.** While a worktree is active, pull and push target the worktree's checked-out branch, not the bridge's configured branch. Local-only branches (no upstream yet) skip the network pull and get `-u` set on first push.
 - **PR mode is bypassed** while a worktree is active — the worktree branch *is* the feature branch, so pushes go to it directly.

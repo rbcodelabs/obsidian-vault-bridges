@@ -143,6 +143,28 @@
 	border-radius: 9px;
 	white-space: nowrap;
 	font-size: 0.85em;
+	/* Button reset — the pill is a clickable worktree switcher */
+	border: none;
+	box-shadow: none;
+	height: auto;
+	line-height: inherit;
+	font-family: inherit;
+	cursor: pointer;
+}
+
+.vault-bridges-bar-branch:hover:not(:disabled) {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
+}
+
+.vault-bridges-bar-branch:disabled {
+	cursor: default;
+	opacity: 0.6;
+}
+
+.vault-bridges-bar-branch .vault-bridges-pill-chevron {
+	opacity: 0.55;
+	font-size: 0.9em;
 }
 
 .vault-bridges-bar-status-label {
@@ -852,4 +874,9 @@
 .vault-bridges-sidebar-card-branch.is-worktree {
 	color: var(--color-purple, #a882ff);
 	background: rgba(168, 130, 255, 0.12);
+}
+
+.vault-bridges-bar-branch.is-worktree:hover:not(:disabled) {
+	color: var(--color-purple, #a882ff);
+	background: rgba(168, 130, 255, 0.22);
 }
