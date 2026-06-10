@@ -160,4 +160,25 @@ export class VaultBridgesAPI {
 		if (!bridge) throw new Error(`Vault Bridges: no bridge with id "${id}"`);
 		await this.plugin.bridgeManager.switchWorktree(bridge, worktreePath, options?.force ?? false);
 	}
+
+	/**
+	 * Points every bridge of the given repo at a worktree (or back at the main
+	 * checkout when `worktreePath` is null) and re-pulls. Convenience for
+	 * external callers (e.g. MCP integrations) that know the repo path but not
+	 * the bridge id. Repo paths are compared with symlinks resolved.
+	 *
+	 * @returns The number of bridges that were switched (0 when no bridge
+	 *          matches `repoPath`).
+	 */
+	async switchWorktreeForRepo(
+		repoPath: string,
+		worktreePath: string | null,
+		options?: { force?: boolean },
+	): Promise<number> {
+		const matches = this.plugin.worktreeAutoFlip.matchBridges({ repoPath, worktreePath });
+		for (const bridge of matches) {
+			await this.plugin.bridgeManager.switchWorktree(bridge, worktreePath, options?.force ?? false);
+		}
+		return matches.length;
+	}
 }

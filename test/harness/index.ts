@@ -20,6 +20,7 @@ const settings: VaultBridgesSettings = {
 	syncOnStartup: true,
 	claudePath: '/opt/homebrew/bin/claude',
 	claudeEnabled: true,
+	autoFlipWorktrees: true,
 };
 
 const mockStatusBar = { update: () => {} };
@@ -126,6 +127,7 @@ function renderCommandBarScenario(openPopdown: boolean) {
 		syncOnStartup: true,
 		claudePath: '/opt/homebrew/bin/claude',
 		claudeEnabled: true,
+		autoFlipWorktrees: true,
 	};
 
 	// Create a leaf and register it with the workspace mock

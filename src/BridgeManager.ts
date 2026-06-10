@@ -208,6 +208,19 @@ export class BridgeManager {
 			: `main repo (${bridge.branch})`;
 		new Notice(`Vault Bridges: "${bridge.name}" now tracking ${target} — re-pulling…`);
 
+		// Announce the switch so other plugins (e.g. Claude Threads) can keep
+		// their own state in sync. Payload: WorktreeSwitchedEvent. Optional-
+		// chained because test harnesses stub workspace as a bare object.
+		(this.plugin.app.workspace as unknown as {
+			trigger?: (name: string, payload: import('./types').WorktreeSwitchedEvent) => void;
+		}).trigger?.('vault-bridges:worktree-switched', {
+			bridgeId: bridge.id,
+			bridgeName: bridge.name,
+			repoPath: bridge.repoPath,
+			worktreePath: bridge.activeWorktreePath ?? null,
+			branch: bridge.activeWorktreeBranch ?? bridge.branch,
+		});
+
 		// Forced re-pull: copies the selected checkout into the vault and
 		// rebuilds the manifest so dirty tracking is relative to the new base.
 		await this.syncBridge(bridge, true);
