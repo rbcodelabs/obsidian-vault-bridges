@@ -2,6 +2,7 @@ import { App, PluginSettingTab, Setting } from 'obsidian';
 import type VaultBridgesPlugin from '../main';
 import type { Bridge } from './types';
 import { AddBridgeModal } from './AddBridgeModal';
+import { WorktreeSwitchModal } from './WorktreeSwitchModal';
 
 export class VaultBridgesSettingsTab extends PluginSettingTab {
 	constructor(app: App, private plugin: VaultBridgesPlugin) {
@@ -146,7 +147,24 @@ export class VaultBridgesSettingsTab extends PluginSettingTab {
 				});
 			}
 
+			// Worktree badge
+			if (bridge.activeWorktreePath) {
+				setting.nameEl.createSpan({
+					text: ` ⎇ ${bridge.activeWorktreeBranch ?? 'worktree'}`,
+					cls: 'vault-bridges-badge vault-bridges-badge-worktree',
+					attr: { title: `Tracking worktree: ${bridge.activeWorktreePath}` },
+				});
+			}
+
 			setting
+				.addButton(btn =>
+					btn
+						.setIcon('git-branch')
+						.setTooltip('Switch worktree')
+						.onClick(() => {
+							new WorktreeSwitchModal(this.app, this.plugin, bridge).open();
+						})
+				)
 				.addButton(btn =>
 					btn
 						.setIcon('arrow-down-circle')
@@ -208,8 +226,11 @@ export class VaultBridgesSettingsTab extends PluginSettingTab {
 		const errorNote = bridge.lastError ? ` · Error: ${bridge.lastError}` : '';
 		const prNote = bridge.prMode ? ' · PR mode' : '';
 		const prUrlNote = bridge.lastPrUrl ? ` · PR: ${bridge.lastPrUrl}` : '';
+		const worktreeNote = bridge.activeWorktreePath
+			? ` · Worktree: ${bridge.activeWorktreeBranch ?? bridge.activeWorktreePath}`
+			: '';
 
-		return `${src} ${arrow} ${bridge.vaultPath} · ${pulledLabel}${pushedLabel}${prNote}${prUrlNote}${dirtyNote}${errorNote}`;
+		return `${src} ${arrow} ${bridge.vaultPath}${worktreeNote} · ${pulledLabel}${pushedLabel}${prNote}${prUrlNote}${dirtyNote}${errorNote}`;
 	}
 
 	private statusEmoji(status: Bridge['status']): string {

@@ -158,8 +158,15 @@ export class BridgesSidebarView extends ItemView {
 		left.createEl('span', { cls: 'vault-bridges-sidebar-card-name', text: bridge.name });
 
 		left.createEl('span', {
-			cls: 'vault-bridges-sidebar-card-branch',
-			text: bridge.branch,
+			cls: bridge.activeWorktreePath
+				? 'vault-bridges-sidebar-card-branch is-worktree'
+				: 'vault-bridges-sidebar-card-branch',
+			text: bridge.activeWorktreePath
+				? `⎇ ${bridge.activeWorktreeBranch ?? 'worktree'}`
+				: bridge.branch,
+			attr: bridge.activeWorktreePath
+				? { title: `Tracking worktree: ${bridge.activeWorktreePath}` }
+				: {},
 		});
 
 		// Right: action buttons

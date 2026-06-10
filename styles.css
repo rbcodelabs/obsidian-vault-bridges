@@ -838,3 +838,18 @@
 	border-color: var(--interactive-accent);
 }
 
+
+/* ── Worktree indicators ─────────────────────────────────────────────── */
+
+.vault-bridges-badge-worktree {
+	color: var(--color-purple, #a882ff);
+	font-size: 0.8em;
+	margin-left: 4px;
+	white-space: nowrap;
+}
+
+.vault-bridges-bar-branch.is-worktree,
+.vault-bridges-sidebar-card-branch.is-worktree {
+	color: var(--color-purple, #a882ff);
+	background: rgba(168, 130, 255, 0.12);
+}

@@ -145,7 +145,17 @@ export class FileCommandBar {
 		});
 
 		info.createEl('span', { cls: 'vault-bridges-bar-name', text: name });
-		info.createEl('span', { cls: 'vault-bridges-bar-branch', text: branch });
+		info.createEl('span', {
+			cls: bridge.activeWorktreePath
+				? 'vault-bridges-bar-branch is-worktree'
+				: 'vault-bridges-bar-branch',
+			text: bridge.activeWorktreePath
+				? `⎇ ${bridge.activeWorktreeBranch ?? 'worktree'}`
+				: branch,
+			attr: bridge.activeWorktreePath
+				? { title: `Tracking worktree: ${bridge.activeWorktreePath}` }
+				: {},
+		});
 
 		if (isSyncing) {
 			info.createEl('span', { cls: 'vault-bridges-bar-status-label is-syncing', text: 'syncing…' });

@@ -1,6 +1,6 @@
 import { Notice } from 'obsidian';
 import type VaultBridgesPlugin from '../main';
-import type { Bridge } from './types';
+import type { Bridge, WorktreeInfo } from './types';
 
 /**
  * Options for adding a new bridge via the plugin API.
@@ -125,5 +125,39 @@ export class VaultBridgesAPI {
 		const bridge = this.plugin.settings.bridges.find(b => b.id === id);
 		if (!bridge) return;
 		await this.plugin.bridgeManager.pushBridge(bridge);
+	}
+
+	/**
+	 * Lists all worktrees of the bridge's repo. The first entry is the main
+	 * checkout; `isActive` marks the one the bridge currently mirrors.
+	 *
+	 * @throws if no bridge with the given id exists.
+	 */
+	async listWorktrees(id: string): Promise<WorktreeInfo[]> {
+		const bridge = this.plugin.settings.bridges.find(b => b.id === id);
+		if (!bridge) throw new Error(`Vault Bridges: no bridge with id "${id}"`);
+		return this.plugin.bridgeManager.listWorktrees(bridge);
+	}
+
+	/**
+	 * Points the bridge at a different worktree and re-pulls it into the vault.
+	 * Pass `null` (or the main checkout's path) to switch back to the main repo.
+	 *
+	 * If the vault copy has unsaved edits and `force` is false, a confirmation
+	 * modal is shown to the user before anything changes. Pass `force: true`
+	 * for headless callers (e.g. MCP integrations) to switch immediately,
+	 * discarding unpushed vault edits.
+	 *
+	 * @throws if no bridge with the given id exists, or `worktreePath` is not a
+	 *         linked worktree of the bridge's repo.
+	 */
+	async switchWorktree(
+		id: string,
+		worktreePath: string | null,
+		options?: { force?: boolean },
+	): Promise<void> {
+		const bridge = this.plugin.settings.bridges.find(b => b.id === id);
+		if (!bridge) throw new Error(`Vault Bridges: no bridge with id "${id}"`);
+		await this.plugin.bridgeManager.switchWorktree(bridge, worktreePath, options?.force ?? false);
 	}
 }
