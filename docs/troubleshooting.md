@@ -80,6 +80,7 @@ Source subfolder:  docs                              ← subfolder goes here
 | Wrong branch name | Edit the bridge and correct the **Branch** field |
 | Remote doesn't exist | The repo may be local-only; verify with `git remote -v` |
 | `Need to specify how to reconcile divergent branches` | The repo is checked out on a branch other than the bridge's configured one. As of the cross-branch-pull fix the bridge follows the checked-out branch automatically; if you still hit this on an older build, run `git checkout <configured-branch>` in the repo, or pin the worktree via the branch pill |
+| `couldn't find remote ref <branch>` | The checked-out (or worktree) branch was never pushed, so origin has no ref for it. The bridge now detects this (via `git ls-remote`) and just copies the local checkout into the vault instead of pulling. Push the branch when you're ready to sync it to the remote |
 
 For authentication issues, after resolving them in the terminal, the next sync from Vault Bridges will succeed (it inherits your system's Git credential store).
 

@@ -91,16 +91,16 @@ function makePlugin(): VaultBridgesPlugin {
 }
 
 /**
- * Routes exec calls by command content. `hasUpstream` controls whether the
- * `@{u}` upstream probe succeeds or fails.
+ * Routes exec calls by command content. `remoteHasBranch` controls whether the
+ * `git ls-remote --heads origin <branch>` probe finds the branch on origin.
  */
-function setupExecRouter({ hasUpstream = true, headBranch = WT_BRANCH, mainHeadBranch = 'main', stagedChanges = false } = {}) {
+function setupExecRouter({ remoteHasBranch = true, headBranch = WT_BRANCH, mainHeadBranch = 'main', stagedChanges = false } = {}) {
 	vi.mocked(exec).mockImplementation((cmd: any, opts: any, cb: any) => {
 		if (cmd.includes('worktree list --porcelain')) {
 			cb(null, { stdout: PORCELAIN, stderr: '' });
-		} else if (cmd.includes('@{u}')) {
-			if (hasUpstream) cb(null, { stdout: 'origin/some-branch', stderr: '' });
-			else cb(new Error('fatal: no upstream configured'), { stdout: '', stderr: '' });
+		} else if (cmd.includes('ls-remote --heads origin')) {
+			// Non-empty stdout ⇒ origin has the branch. Empty ⇒ local-only.
+			cb(null, { stdout: remoteHasBranch ? 'deadbeef\trefs/heads/branch\n' : '', stderr: '' });
 		} else if (cmd.includes('rev-parse --abbrev-ref HEAD')) {
 			// The main checkout (`/repo/path`) and a linked worktree can be on
 			// different branches — route by the `-C` target path.
@@ -210,7 +210,7 @@ describe('BridgeManager.switchWorktree', () => {
 		const manager = new BridgeManager(plugin);
 		const bridge = makeBridge();
 		plugin.settings.bridges.push(bridge);
-		setupExecRouter({ hasUpstream: false }); // local-only worktree branch
+		setupExecRouter({ remoteHasBranch: false }); // local-only worktree branch (not on origin)
 
 		await manager.switchWorktree(bridge, WT_PATH);
 
@@ -221,12 +221,12 @@ describe('BridgeManager.switchWorktree', () => {
 		expect(plugin.saveSettings).toHaveBeenCalled();
 	});
 
-	it('skips the network pull when the worktree branch has no upstream', async () => {
+	it('skips the network pull when the worktree branch is not on origin', async () => {
 		const plugin = makePlugin();
 		const manager = new BridgeManager(plugin);
 		const bridge = makeBridge();
 		plugin.settings.bridges.push(bridge);
-		setupExecRouter({ hasUpstream: false });
+		setupExecRouter({ remoteHasBranch: false });
 
 		await manager.switchWorktree(bridge, WT_PATH);
 
@@ -239,7 +239,7 @@ describe('BridgeManager.switchWorktree', () => {
 		const manager = new BridgeManager(plugin);
 		const bridge = makeBridge();
 		plugin.settings.bridges.push(bridge);
-		setupExecRouter({ hasUpstream: true });
+		setupExecRouter({ remoteHasBranch: true });
 
 		await manager.switchWorktree(bridge, WT_PATH);
 
@@ -350,7 +350,7 @@ describe('BridgeManager.syncBridge — on a worktree', () => {
 		const manager = new BridgeManager(plugin);
 		const bridge = makeBridge({ activeWorktreePath: WT_PATH, branch: 'main' });
 		plugin.settings.bridges.push(bridge);
-		setupExecRouter({ hasUpstream: true, headBranch: WT_BRANCH });
+		setupExecRouter({ remoteHasBranch: true, headBranch: WT_BRANCH });
 
 		await manager.syncBridge(bridge, true);
 
@@ -374,6 +374,52 @@ describe('BridgeManager.syncBridge — on a worktree', () => {
 		expect(bridge.status).toBe('error');
 		expect(bridge.lastError).toMatch(/detached HEAD/);
 	});
+
+	it('skips the pull for a local-only worktree branch even when it has an inherited upstream', async () => {
+		// Regression: a worktree branch created from `main` inherits
+		// `@{u} = origin/main`, so an upstream-existence check would say "pull".
+		// But origin has no ref for the branch, so `pull origin <branch>` fails
+		// with `couldn't find remote ref`. We must gate on the remote branch.
+		const plugin = makePlugin();
+		const manager = new BridgeManager(plugin);
+		const bridge = makeBridge({ activeWorktreePath: WT_PATH, branch: 'main' });
+		plugin.settings.bridges.push(bridge);
+		setupExecRouter({ remoteHasBranch: false, headBranch: WT_BRANCH });
+
+		await manager.syncBridge(bridge, true);
+
+		expect(bridge.status).toBe('ok');
+		expect(execCalls().some(cmd => cmd.includes('pull origin'))).toBe(false);
+		// And it actually probed the remote for that specific branch.
+		expect(execCalls().some(cmd =>
+			cmd.includes(`ls-remote --heads origin "${WT_BRANCH}"`)
+		)).toBe(true);
+	});
+
+	it('skips the pull (copies locally) when ls-remote itself fails', async () => {
+		const plugin = makePlugin();
+		const manager = new BridgeManager(plugin);
+		const bridge = makeBridge({ activeWorktreePath: WT_PATH, branch: 'main' });
+		plugin.settings.bridges.push(bridge);
+		// ls-remote errors (offline / no origin); everything else succeeds.
+		vi.mocked(exec).mockImplementation((cmd: any, opts: any, cb: any) => {
+			if (cmd.includes('worktree list --porcelain')) {
+				cb(null, { stdout: PORCELAIN, stderr: '' });
+			} else if (cmd.includes('ls-remote --heads origin')) {
+				cb(new Error('fatal: unable to access origin'), { stdout: '', stderr: '' });
+			} else if (cmd.includes('rev-parse --abbrev-ref HEAD')) {
+				cb(null, { stdout: `${WT_BRANCH}\n`, stderr: '' });
+			} else {
+				cb(null, { stdout: '', stderr: '' });
+			}
+			return {} as any;
+		});
+
+		await manager.syncBridge(bridge, true);
+
+		expect(bridge.status).toBe('ok');
+		expect(execCalls().some(cmd => cmd.includes('pull origin'))).toBe(false);
+	});
 });
 
 // ─── gitPull when the main checkout is parked on a different branch ──────────
@@ -385,7 +431,7 @@ describe('BridgeManager.syncBridge — main checkout on a non-configured branch'
 		const bridge = makeBridge({ branch: 'main' }); // no worktree
 		plugin.settings.bridges.push(bridge);
 		// Main repo is parked on a feature branch with an upstream.
-		setupExecRouter({ hasUpstream: true, mainHeadBranch: 'feat/parked' });
+		setupExecRouter({ remoteHasBranch: true, mainHeadBranch: 'feat/parked' });
 
 		await manager.syncBridge(bridge, true);
 
@@ -397,12 +443,12 @@ describe('BridgeManager.syncBridge — main checkout on a non-configured branch'
 		expect(execCalls().some(cmd => cmd.includes('pull origin "main"'))).toBe(false);
 	});
 
-	it('skips the network pull when the parked branch has no upstream', async () => {
+	it('skips the network pull when the parked branch is not on origin', async () => {
 		const plugin = makePlugin();
 		const manager = new BridgeManager(plugin);
 		const bridge = makeBridge({ branch: 'main' });
 		plugin.settings.bridges.push(bridge);
-		setupExecRouter({ hasUpstream: false, mainHeadBranch: 'feat/local-only' });
+		setupExecRouter({ remoteHasBranch: false, mainHeadBranch: 'feat/local-only' });
 
 		await manager.syncBridge(bridge, true);
 
@@ -415,7 +461,7 @@ describe('BridgeManager.syncBridge — main checkout on a non-configured branch'
 		const manager = new BridgeManager(plugin);
 		const bridge = makeBridge({ branch: 'main' });
 		plugin.settings.bridges.push(bridge);
-		setupExecRouter({ hasUpstream: true, mainHeadBranch: 'main' });
+		setupExecRouter({ remoteHasBranch: true, mainHeadBranch: 'main' });
 
 		await manager.syncBridge(bridge, true);
 
@@ -431,7 +477,7 @@ describe('BridgeManager.syncBridge — main checkout on a non-configured branch'
 		const bridge = makeBridge({ branch: 'main' });
 		plugin.settings.bridges.push(bridge);
 		// A detached main checkout reports "HEAD" from rev-parse --abbrev-ref.
-		setupExecRouter({ hasUpstream: true, mainHeadBranch: 'HEAD' });
+		setupExecRouter({ remoteHasBranch: true, mainHeadBranch: 'HEAD' });
 
 		await manager.syncBridge(bridge, true);
 

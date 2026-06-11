@@ -84,6 +84,8 @@ If your repo uses a different default branch (`master`, `develop`, `trunk`), set
 
 **The bridge follows the branch the repo is actually checked out on.** If the main checkout is parked on a feature branch (e.g. you ran `git checkout feat/x` in the repo directly instead of in a worktree), the bridge pulls and pushes that branch rather than the configured one. This avoids a cross-branch pull that would otherwise abort with `fatal: Need to specify how to reconcile divergent branches`. A notice tells you when this override is in effect. To go back to the configured branch, check the repo back out onto it (`git checkout main`). When a worktree is pinned via the branch pill, that worktree's branch takes precedence as before.
 
+**Local-only branches are handled gracefully.** If the branch being followed (worktree or main checkout) was never pushed, origin has no ref for it and a network pull would fail with `couldn't find remote ref`. The bridge checks the remote with `git ls-remote` first and, when the branch isn't there, simply copies the local checkout into the vault instead of pulling. Push the branch when you want the bridge to start syncing it over the network.
+
 ### Auto Sync on Startup
 When enabled, this bridge is included in the startup sync batch. This is subject to the global **Sync on startup** toggle also being enabled.
 

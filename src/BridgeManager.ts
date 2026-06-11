@@ -165,15 +165,33 @@ export class BridgeManager {
 		return branch;
 	}
 
-	/** True when the current HEAD branch at repoPath has an upstream configured. */
-	private async hasUpstream(repoPath: string): Promise<boolean> {
+	/**
+	 * True when `origin` actually has a branch named `branch`.
+	 *
+	 * This is the right gate for "is there anything to pull over the network?" —
+	 * checking for an upstream tracking ref is not enough: a worktree branch
+	 * created from `main` often inherits `@{u} = origin/main`, so it *has* an
+	 * upstream yet `git pull origin <branch>` still fails with
+	 * `couldn't find remote ref <branch>` because origin has no branch by that
+	 * name. Asking the remote directly avoids that false positive.
+	 *
+	 * When `ls-remote` itself fails (offline, auth error, no `origin` remote) we
+	 * can't confirm the branch exists, so we return `false` — the caller then
+	 * operates on the local checkout instead of hard-failing the sync.
+	 */
+	private async remoteBranchExists(repoPath: string, branch: string): Promise<boolean> {
 		try {
-			await execAsync(
-				`git -C "${shellEsc(repoPath)}" rev-parse --abbrev-ref --symbolic-full-name @{u}`,
-				{ timeout: 10000 }
+			const { stdout } = await execAsync(
+				`git -C "${shellEsc(repoPath)}" ls-remote --heads origin "${branch}"`,
+				{ timeout: 15000 }
 			);
-			return true;
-		} catch {
+			return stdout.trim().length > 0;
+		} catch (err) {
+			console.warn(
+				`Vault Bridges: ls-remote failed for branch "${branch}" in ${repoPath}; ` +
+				`treating it as local-only and skipping the network pull.`,
+				err
+			);
 			return false;
 		}
 	}
@@ -562,7 +580,7 @@ export class BridgeManager {
 		if (followingCheckout) {
 			new Notice(
 				`Vault Bridges: "${bridge.name}" — repo is on "${branch}", not the configured "${bridge.branch}". ` +
-				`Pulling "${branch}" to follow the checked-out branch.`,
+				`Following the checked-out branch.`,
 				8000
 			);
 			console.log(
@@ -592,17 +610,19 @@ export class BridgeManager {
 			console.warn(`Vault Bridges: auto-stash check failed for "${bridge.name}":`, stashCheckErr);
 		}
 
-		// A worktree branch — or a main checkout parked on a local-only feature
-		// branch — often has no upstream yet. In that case there is nothing to
-		// pull from the network; copying the checkout into the vault is all that's
-		// needed. The configured-branch case keeps pulling unconditionally.
+		// A worktree branch — or a main checkout parked on a feature branch — is
+		// often local-only: it exists on disk but was never pushed, so origin has
+		// no ref for it. Pulling it would fail with `couldn't find remote ref`, so
+		// we pull over the network only when origin actually has the branch and
+		// otherwise just copy the checkout into the vault. The configured-branch
+		// case keeps pulling unconditionally.
 		const skipNetworkPull = (bridge.activeWorktreePath || followingCheckout)
-			? !(await this.hasUpstream(repoPath))
+			? !(await this.remoteBranchExists(repoPath, branch))
 			: false;
 
 		if (skipNetworkPull) {
 			console.log(
-				`Vault Bridges: "${bridge.name}" — branch "${branch}" has no upstream; skipping network pull.`
+				`Vault Bridges: "${bridge.name}" — branch "${branch}" is not on origin; skipping network pull.`
 			);
 		} else {
 			try {
