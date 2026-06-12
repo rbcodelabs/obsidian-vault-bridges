@@ -505,6 +505,242 @@ describe('BridgeManager.syncBridge — main checkout on a non-configured branch'
 	});
 });
 
+// ─── hasGitDirtyState ─────────────────────────────────────────────────────────
+
+describe('BridgeManager.hasGitDirtyState', () => {
+	it('returns true when git status --porcelain has output', async () => {
+		const manager = new BridgeManager(makePlugin());
+		const bridge = makeBridge();
+		vi.mocked(exec).mockImplementation((cmd: any, opts: any, cb: any) => {
+			if (cmd.includes('status --porcelain')) {
+				cb(null, { stdout: ' M src/foo.ts\n', stderr: '' });
+			} else {
+				cb(null, { stdout: '', stderr: '' });
+			}
+			return {} as any;
+		});
+
+		expect(await manager.hasGitDirtyState(bridge)).toBe(true);
+	});
+
+	it('returns false when the working tree is clean', async () => {
+		const manager = new BridgeManager(makePlugin());
+		// setupExecRouter default returns empty stdout for status --porcelain
+		expect(await manager.hasGitDirtyState(makeBridge())).toBe(false);
+	});
+
+	it('returns false (non-fatal) when git status fails', async () => {
+		const manager = new BridgeManager(makePlugin());
+		vi.mocked(exec).mockImplementation((cmd: any, opts: any, cb: any) => {
+			if (cmd.includes('status --porcelain')) {
+				cb(new Error('not a git repo'), { stdout: '', stderr: '' });
+			} else {
+				cb(null, { stdout: '', stderr: '' });
+			}
+			return {} as any;
+		});
+
+		expect(await manager.hasGitDirtyState(makeBridge())).toBe(false);
+	});
+
+	it('targets the active worktree path when one is set', async () => {
+		const manager = new BridgeManager(makePlugin());
+		const bridge = makeBridge({ activeWorktreePath: WT_PATH });
+
+		await manager.hasGitDirtyState(bridge);
+
+		expect(execCalls().some(cmd =>
+			cmd.includes(`git -C "${WT_PATH}" status --porcelain`)
+		)).toBe(true);
+	});
+});
+
+// ─── stashAndSwitch ───────────────────────────────────────────────────────────
+
+describe('BridgeManager.stashAndSwitch', () => {
+	function makeStashRouter(opts: {
+		stashOut?: string;
+		stashFails?: boolean;
+		popFails?: boolean;
+	} = {}) {
+		const {
+			stashOut = 'Saved working directory and index state vault-bridges stash-and-switch\n',
+			stashFails = false,
+			popFails = false,
+		} = opts;
+
+		vi.mocked(exec).mockImplementation((cmd: any, opts: any, cb: any) => {
+			if (cmd.includes('worktree list --porcelain')) {
+				cb(null, { stdout: PORCELAIN, stderr: '' });
+			} else if (cmd.includes('stash push')) {
+				if (stashFails) {
+					cb(new Error('cannot stash'), { stdout: '', stderr: '' });
+				} else {
+					cb(null, { stdout: stashOut, stderr: '' });
+				}
+			} else if (cmd.includes('stash pop')) {
+				if (popFails) {
+					cb(new Error('CONFLICT'), { stdout: '', stderr: '' });
+				} else {
+					cb(null, { stdout: '', stderr: '' });
+				}
+			} else if (cmd.includes('ls-remote --heads origin')) {
+				cb(null, { stdout: '', stderr: '' }); // local-only branch
+			} else if (cmd.includes('rev-parse --abbrev-ref HEAD')) {
+				const branch = cmd.includes(WT_PATH) ? WT_BRANCH : 'main';
+				cb(null, { stdout: `${branch}\n`, stderr: '' });
+			} else {
+				cb(null, { stdout: '', stderr: '' });
+			}
+			return {} as any;
+		});
+	}
+
+	it('stashes in the source, switches, then pops in the destination', async () => {
+		const plugin = makePlugin();
+		const manager = new BridgeManager(plugin);
+		const bridge = makeBridge();
+		plugin.settings.bridges.push(bridge);
+		makeStashRouter();
+
+		await manager.stashAndSwitch(bridge, WT_PATH);
+
+		const calls = execCalls();
+		// Stash was pushed from the source (main repo)
+		expect(calls.some(cmd =>
+			cmd.includes('git -C "/repo/path" stash push --include-untracked')
+		)).toBe(true);
+		// Bridge now points at the worktree
+		expect(bridge.activeWorktreePath).toBe(WT_PATH);
+		// Stash was popped in the destination (worktree)
+		expect(calls.some(cmd =>
+			cmd.includes(`git -C "${WT_PATH}" stash pop`)
+		)).toBe(true);
+	});
+
+	it('shows a Notice and aborts when stash push fails', async () => {
+		const { Notice } = await import('obsidian');
+		const plugin = makePlugin();
+		const manager = new BridgeManager(plugin);
+		const bridge = makeBridge();
+		plugin.settings.bridges.push(bridge);
+		makeStashRouter({ stashFails: true });
+
+		await manager.stashAndSwitch(bridge, WT_PATH);
+
+		expect(vi.mocked(Notice)).toHaveBeenCalledWith(
+			expect.stringContaining('stash failed'),
+			expect.any(Number),
+		);
+		expect(bridge.activeWorktreePath).toBeUndefined(); // switch did not happen
+	});
+
+	it('completes the switch but warns when stash pop conflicts', async () => {
+		const { Notice } = await import('obsidian');
+		const plugin = makePlugin();
+		const manager = new BridgeManager(plugin);
+		const bridge = makeBridge();
+		plugin.settings.bridges.push(bridge);
+		makeStashRouter({ popFails: true });
+
+		await manager.stashAndSwitch(bridge, WT_PATH);
+
+		// Switch still completed
+		expect(bridge.activeWorktreePath).toBe(WT_PATH);
+		// Warning Notice about stash pop failure
+		expect(vi.mocked(Notice)).toHaveBeenCalledWith(
+			expect.stringContaining('stash pop failed'),
+			expect.any(Number),
+		);
+	});
+
+	it('skips the stash pop when no changes were stashed', async () => {
+		const plugin = makePlugin();
+		const manager = new BridgeManager(plugin);
+		const bridge = makeBridge();
+		plugin.settings.bridges.push(bridge);
+		makeStashRouter({ stashOut: 'No local changes to save\n' });
+
+		await manager.stashAndSwitch(bridge, WT_PATH);
+
+		expect(execCalls().some(cmd => cmd.includes('stash pop'))).toBe(false);
+	});
+});
+
+// ─── switchWorktree — git dirty state ────────────────────────────────────────
+
+describe('BridgeManager.switchWorktree — git dirty state', () => {
+	it('opens DirtyWarningModal with onStashAndSwitch when the repo has uncommitted changes', async () => {
+		const plugin = makePlugin();
+		const manager = new BridgeManager(plugin);
+		const bridge = makeBridge(); // no fileManifest → vault not dirty
+		plugin.settings.bridges.push(bridge);
+
+		vi.mocked(exec).mockImplementation((cmd: any, opts: any, cb: any) => {
+			if (cmd.includes('status --porcelain')) {
+				cb(null, { stdout: ' M src/foo.ts\n', stderr: '' });
+			} else if (cmd.includes('worktree list --porcelain')) {
+				cb(null, { stdout: PORCELAIN, stderr: '' });
+			} else {
+				cb(null, { stdout: '', stderr: '' });
+			}
+			return {} as any;
+		});
+
+		await manager.switchWorktree(bridge, WT_PATH);
+
+		expect(DirtyWarningModal).toHaveBeenCalled();
+		const [, , callbacks] = vi.mocked(DirtyWarningModal).mock.calls[0] as any[];
+		expect(callbacks.onStashAndSwitch).toBeDefined();
+		expect(callbacks.onPushThenPull).toBeUndefined(); // vault not dirty, no push button
+		expect(bridge.activeWorktreePath).toBeUndefined(); // switch aborted
+	});
+
+	it('exposes both onPushThenPull and onStashAndSwitch when both are dirty', async () => {
+		const plugin = makePlugin();
+		const manager = new BridgeManager(plugin);
+		// Vault dirty: fileManifest present with stale hash
+		const bridge = makeBridge({ fileManifest: { 'README.md': 'oldhash' } });
+		plugin.settings.bridges.push(bridge);
+
+		// readdirSync returns a file that differs from the manifest → checkDirty = true
+		vi.mocked(fs.readdirSync).mockReturnValue([
+			{ name: 'README.md', isDirectory: () => false, isFile: () => true },
+		] as any);
+		vi.mocked(fs.statSync).mockReturnValue({ isDirectory: () => false, isFile: () => true } as any);
+
+		vi.mocked(exec).mockImplementation((cmd: any, opts: any, cb: any) => {
+			if (cmd.includes('status --porcelain')) {
+				cb(null, { stdout: ' M src/foo.ts\n', stderr: '' }); // git also dirty
+			} else if (cmd.includes('worktree list --porcelain')) {
+				cb(null, { stdout: PORCELAIN, stderr: '' });
+			} else {
+				cb(null, { stdout: '', stderr: '' });
+			}
+			return {} as any;
+		});
+
+		await manager.switchWorktree(bridge, WT_PATH);
+
+		const [, , callbacks] = vi.mocked(DirtyWarningModal).mock.calls[0] as any[];
+		expect(callbacks.onPushThenPull).toBeDefined();
+		expect(callbacks.onStashAndSwitch).toBeDefined();
+	});
+
+	it('does not open DirtyWarningModal when both vault and git are clean', async () => {
+		const plugin = makePlugin();
+		const manager = new BridgeManager(plugin);
+		const bridge = makeBridge();
+		plugin.settings.bridges.push(bridge);
+		setupExecRouter({ remoteHasBranch: false }); // clean repo, clean vault
+
+		await manager.switchWorktree(bridge, WT_PATH);
+
+		expect(DirtyWarningModal).not.toHaveBeenCalled();
+		expect(bridge.activeWorktreePath).toBe(WT_PATH);
+	});
+});
+
 // ─── pushBridge on a worktree ─────────────────────────────────────────────────
 
 describe('BridgeManager.pushBridge — on a worktree', () => {

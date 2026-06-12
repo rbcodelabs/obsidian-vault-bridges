@@ -90,6 +90,80 @@ export class BridgeManager {
 	}
 
 	/**
+	 * Returns true when the effective repo path (main checkout or active worktree)
+	 * has uncommitted changes according to `git status --porcelain`. Non-fatal:
+	 * returns false if the git command itself fails (e.g. not a git repo yet).
+	 */
+	async hasGitDirtyState(bridge: Bridge): Promise<boolean> {
+		const repoPath = this.effectiveRepoPath(bridge);
+		try {
+			const { stdout } = await execAsync(
+				`git -C "${shellEsc(repoPath)}" status --porcelain`,
+				{ timeout: 10000 }
+			);
+			return stdout.trim().length > 0;
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * Stash uncommitted repo-side changes in the current worktree, switch to the
+	 * target, and pop the stash there so the in-progress edits land on the
+	 * intended branch.
+	 *
+	 * Git stashes are repo-wide (stored in `.git/refs/stash`), so a stash created
+	 * in any linked worktree can be popped in any other worktree of the same repo.
+	 *
+	 * Error handling:
+	 * - Stash push failure: shows a Notice and aborts (no switch happens).
+	 * - Stash pop failure (conflict): shows a Notice, but the switch is kept — the
+	 *   stash entry remains and the user can resolve it manually.
+	 */
+	async stashAndSwitch(bridge: Bridge, worktreePath: string | null): Promise<void> {
+		const sourceRepoPath = this.effectiveRepoPath(bridge);
+
+		// 1. Stash changes in the current worktree/checkout.
+		let didStash = false;
+		try {
+			const { stdout } = await execAsync(
+				`git -C "${shellEsc(sourceRepoPath)}" stash push --include-untracked -m "vault-bridges stash-and-switch"`,
+				{ timeout: 15000 }
+			);
+			didStash = !stdout.trim().startsWith('No local changes');
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			new Notice(`Vault Bridges: "${bridge.name}" — stash failed: ${msg}`, 10000);
+			return;
+		}
+
+		// 2. Switch to the target (force=true so dirty checks are bypassed).
+		await this.switchWorktree(bridge, worktreePath, true);
+
+		// 3. Pop the stash in the destination so the edits land there.
+		if (didStash) {
+			const destRepoPath = this.effectiveRepoPath(bridge); // now the new worktree
+			try {
+				await execAsync(
+					`git -C "${shellEsc(destRepoPath)}" stash pop`,
+					{ timeout: 15000 }
+				);
+				new Notice(
+					`Vault Bridges: ✓ "${bridge.name}" — stashed changes reapplied to "${bridge.activeWorktreeBranch ?? bridge.branch}"`,
+					6000
+				);
+			} catch (err) {
+				new Notice(
+					`Vault Bridges: "${bridge.name}" — switched but stash pop failed. ` +
+					`Resolve the conflict manually in: ${destRepoPath}`,
+					12000
+				);
+				console.error(`Vault Bridges: stash pop failed after switch for "${bridge.name}":`, err);
+			}
+		}
+	}
+
+	/**
 	 * Lists all worktrees of the bridge's repo via `git worktree list --porcelain`.
 	 * The first entry is always the main checkout.
 	 */
@@ -199,27 +273,60 @@ export class BridgeManager {
 	/**
 	 * Points the bridge at a different worktree (or back at the main repo when
 	 * `worktreePath` is null) and re-pulls so the vault copy reflects the newly
-	 * selected checkout. If the vault copy has unsaved edits the dirty-warning
-	 * modal is shown first (unless `force` is true).
+	 * selected checkout. If the vault copy has unsaved edits, or the repo itself
+	 * has uncommitted changes, the dirty-warning modal is shown first so the user
+	 * can choose how to handle them (unless `force` is true).
 	 */
 	async switchWorktree(bridge: Bridge, worktreePath: string | null, force = false): Promise<void> {
-		if (!force && this.checkDirty(bridge)) {
-			bridge.isDirty = true;
-			await this.plugin.saveSettings();
-			new DirtyWarningModal(this.plugin.app, bridge, {
-				onPushThenPull: async () => {
-					await this.pushBridge(bridge);
-					await this.switchWorktree(bridge, worktreePath, true);
-				},
-				onPullAnyway: async () => {
-					await this.switchWorktree(bridge, worktreePath, true);
-				},
-			}, {
-				body: `"${bridge.name}" has vault edits that haven't been pushed yet. Switching worktrees will overwrite those edits with the selected checkout's state.`,
-				primary: 'Push then Switch',
-				warning: 'Switch anyway',
-			}).open();
-			return;
+		if (!force) {
+			const vaultDirty = this.checkDirty(bridge);
+			const gitDirty = await this.hasGitDirtyState(bridge);
+
+			if (vaultDirty || gitDirty) {
+				if (vaultDirty) {
+					bridge.isDirty = true;
+					await this.plugin.saveSettings();
+				}
+
+				let body: string;
+				if (vaultDirty && gitDirty) {
+					body =
+						`"${bridge.name}" has vault edits and uncommitted repo changes. ` +
+						`Push the vault edits first to preserve them, or use "Stash & Switch" to carry ` +
+						`the repo changes to the target worktree. "Switch anyway" discards both.`;
+				} else if (vaultDirty) {
+					body =
+						`"${bridge.name}" has vault edits that haven't been pushed yet. ` +
+						`Switching worktrees will overwrite those edits with the selected checkout's state.`;
+				} else {
+					body =
+						`"${bridge.name}" has uncommitted changes in the repo. ` +
+						`Use "Stash & Switch" to carry them to the target worktree, ` +
+						`or "Switch anyway" to leave them behind.`;
+				}
+
+				new DirtyWarningModal(this.plugin.app, bridge, {
+					...(vaultDirty ? {
+						onPushThenPull: async () => {
+							await this.pushBridge(bridge);
+							await this.switchWorktree(bridge, worktreePath, true);
+						},
+					} : {}),
+					onPullAnyway: async () => {
+						await this.switchWorktree(bridge, worktreePath, true);
+					},
+					...(gitDirty ? {
+						onStashAndSwitch: async () => {
+							await this.stashAndSwitch(bridge, worktreePath);
+						},
+					} : {}),
+				}, {
+					body,
+					primary: vaultDirty ? 'Push then Switch' : undefined,
+					warning: 'Switch anyway',
+				}).open();
+				return;
+			}
 		}
 
 		if (worktreePath) {

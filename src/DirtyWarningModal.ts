@@ -2,8 +2,12 @@ import { App, Modal, Setting } from 'obsidian';
 import type { Bridge } from './types';
 
 export interface DirtyWarningCallbacks {
-	onPushThenPull: () => Promise<void>;
+	/** Push vault edits to the repo before performing the pull/switch. */
+	onPushThenPull?: () => Promise<void>;
+	/** Discard vault edits and overwrite with the repo state. */
 	onPullAnyway: () => Promise<void>;
+	/** Stash uncommitted repo-side changes, switch, and reapply in the target. */
+	onStashAndSwitch?: () => Promise<void>;
 }
 
 /** Optional copy overrides so the modal can be reused for non-pull actions (e.g. worktree switching). */
@@ -36,17 +40,35 @@ export class DirtyWarningModal extends Modal {
 			cls: 'vault-bridges-dirty-subtitle',
 		});
 
-		new Setting(contentEl)
-			.addButton(btn =>
+		const row = new Setting(contentEl);
+
+		if (this.callbacks.onPushThenPull) {
+			row.addButton(btn =>
 				btn
 					.setButtonText(this.labels.primary ?? 'Push then Pull')
 					.setTooltip('Commit and push your vault edits to the repo first')
 					.setCta()
 					.onClick(async () => {
 						this.close();
-						await this.callbacks.onPushThenPull();
+						await this.callbacks.onPushThenPull!();
 					})
-			)
+			);
+		}
+
+		if (this.callbacks.onStashAndSwitch) {
+			row.addButton(btn =>
+				btn
+					.setButtonText('Stash & Switch')
+					.setTooltip('Stash uncommitted repo changes and reapply them in the target worktree')
+					.setCta()
+					.onClick(async () => {
+						this.close();
+						await this.callbacks.onStashAndSwitch!();
+					})
+			);
+		}
+
+		row
 			.addButton(btn =>
 				btn
 					.setButtonText(this.labels.warning ?? 'Pull anyway')
