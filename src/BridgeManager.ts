@@ -693,7 +693,14 @@ export class BridgeManager {
 				recursive: true,
 				force: true,
 				preserveTimestamps: true,
-				filter: (src: string) => path.basename(src) !== '.git',
+				filter: (src: string) => {
+					if (path.basename(src) === '.git') return false;
+					// Skip symlinks: following them can cause EINVAL when the resolved
+					// target is the same path as a pre-existing symlink in the vault
+					// (e.g. .claude/skills/* → ../../.agents/skills/*). This matches
+					// the push-side filter which already skips symlinks.
+					try { return !fs.lstatSync(src).isSymbolicLink(); } catch { return true; }
+				},
 			});
 		} else {
 			fs.copyFileSync(sourcePath, destPath);
