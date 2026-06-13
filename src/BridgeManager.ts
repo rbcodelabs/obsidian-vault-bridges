@@ -120,8 +120,44 @@ export class BridgeManager {
 	 * - Stash pop failure (conflict): shows a Notice, but the switch is kept — the
 	 *   stash entry remains and the user can resolve it manually.
 	 */
+	/**
+	 * Writes vault edits back to the repo working tree without committing.
+	 * Used before `git stash` so the stash actually captures vault-side changes.
+	 */
+	private copyVaultToRepo(bridge: Bridge): void {
+		const repoPath = this.effectiveRepoPath(bridge);
+		const sourcePath = bridge.sourcePath
+			? path.join(repoPath, bridge.sourcePath)
+			: repoPath;
+		const vaultPath = path.join(this.vaultBasePath, bridge.vaultPath);
+
+		if (!fs.existsSync(vaultPath)) return;
+
+		const stat = fs.statSync(vaultPath);
+		if (stat.isDirectory()) {
+			// Remove repo files deleted/renamed away in the vault
+			const deletedFiles = this.getChangedFiles(bridge).filter(cf => cf.status === 'deleted');
+			for (const cf of deletedFiles) {
+				const repoFile = path.join(sourcePath, cf.relPath);
+				if (fs.existsSync(repoFile)) fs.unlinkSync(repoFile);
+			}
+			fs.cpSync(vaultPath, sourcePath, {
+				recursive: true,
+				force: true,
+				filter: (src: string) =>
+					path.basename(src) !== '.git' &&
+					!fs.lstatSync(src).isSymbolicLink(),
+			});
+		} else {
+			fs.copyFileSync(vaultPath, sourcePath);
+		}
+	}
+
 	async stashAndSwitch(bridge: Bridge, worktreePath: string | null): Promise<void> {
 		const sourceRepoPath = this.effectiveRepoPath(bridge);
+
+		// 0. Write vault edits to the repo so git stash can capture them.
+		this.copyVaultToRepo(bridge);
 
 		// 1. Stash changes in the current worktree/checkout.
 		let didStash = false;
@@ -297,7 +333,8 @@ export class BridgeManager {
 				} else if (vaultDirty) {
 					body =
 						`"${bridge.name}" has vault edits that haven't been pushed yet. ` +
-						`Switching worktrees will overwrite those edits with the selected checkout's state.`;
+						`Use "Push then Switch" to commit them to this branch, or "Stash & Switch" ` +
+						`to carry them over to the target worktree instead. "Switch anyway" discards them.`;
 				} else {
 					body =
 						`"${bridge.name}" has uncommitted changes in the repo. ` +
@@ -315,7 +352,7 @@ export class BridgeManager {
 					onPullAnyway: async () => {
 						await this.switchWorktree(bridge, worktreePath, true);
 					},
-					...(gitDirty ? {
+					...((vaultDirty || gitDirty) ? {
 						onStashAndSwitch: async () => {
 							await this.stashAndSwitch(bridge, worktreePath);
 						},
