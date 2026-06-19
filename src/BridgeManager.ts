@@ -624,6 +624,27 @@ export class BridgeManager {
 	}
 
 	async syncOnStartup(): Promise<void> {
+		// Clear stale worktree references left behind by crashes or disconnects.
+		// Must run before the syncOnStartup guard so the cleanup happens even when
+		// auto-sync is disabled — a stale path will cause errors on any manual sync too.
+		let settingsDirty = false;
+		for (const bridge of this.plugin.settings.bridges) {
+			if (bridge.activeWorktreePath && !fs.existsSync(bridge.activeWorktreePath)) {
+				console.warn(
+					`Vault Bridges: "${bridge.name}" — worktree "${bridge.activeWorktreePath}" no longer exists; ` +
+					`clearing stale reference on startup.`
+				);
+				bridge.activeWorktreePath = undefined;
+				bridge.activeWorktreeBranch = undefined;
+				bridge.status = 'unknown';
+				settingsDirty = true;
+			}
+		}
+		if (settingsDirty) {
+			await this.plugin.saveSettings();
+			this.notifyUI();
+		}
+
 		if (!this.plugin.settings.syncOnStartup) return;
 		const autoBridges = this.plugin.settings.bridges.filter(b => b.autoSync);
 		if (autoBridges.length === 0) return;
@@ -696,7 +717,22 @@ export class BridgeManager {
 	}
 
 	private async gitPull(bridge: Bridge): Promise<void> {
+		// Self-heal: if the active worktree path no longer exists, clear it and fall
+		// back to the main repo so this sync can recover without manual intervention.
+		if (bridge.activeWorktreePath && !fs.existsSync(bridge.activeWorktreePath)) {
+			console.warn(
+				`Vault Bridges: "${bridge.name}" — active worktree at "${bridge.activeWorktreePath}" no longer exists; ` +
+				`clearing stale reference and falling back to main repo.`
+			);
+			bridge.activeWorktreePath = undefined;
+			bridge.activeWorktreeBranch = undefined;
+			await this.plugin.saveSettings();
+			this.notifyUI();
+			// Re-derive repoPath now that the stale reference is cleared
+			// (effectiveRepoPath now returns bridge.repoPath)
+		}
 		const repoPath = this.effectiveRepoPath(bridge);
+
 		if (!fs.existsSync(repoPath)) {
 			throw new Error(`Repo path does not exist: ${repoPath}`);
 		}
