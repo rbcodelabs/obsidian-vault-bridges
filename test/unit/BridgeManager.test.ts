@@ -405,6 +405,31 @@ describe('BridgeManager.syncOnStartup', () => {
 		const execCalls = vi.mocked(exec).mock.calls.map(([cmd]: any[]) => cmd as string);
 		expect(execCalls.some(cmd => cmd.includes('pull'))).toBe(false);
 	});
+
+	it('clears stale activeWorktreePath when worktree dir is gone', async () => {
+		// Use syncOnStartup: false so the sweep runs (it runs before the guard) but
+		// the subsequent per-bridge sync does not. This lets us assert the intermediate
+		// 'unknown' status that the sweep sets before any pull resolves it.
+		const plugin = makePlugin({ syncOnStartup: false });
+		const manager = new BridgeManager(plugin);
+		const staleWorktreePath = '/private/var/folders/stale-worktree';
+		const bridge = makeBridge({
+			autoSync: true,
+			activeWorktreePath: staleWorktreePath,
+			activeWorktreeBranch: 'claude/feature',
+		});
+		plugin.settings.bridges.push(bridge);
+
+		// The stale worktree path does not exist; everything else does.
+		vi.mocked(fs.existsSync).mockImplementation((p: any) => p !== staleWorktreePath);
+
+		await manager.syncOnStartup();
+
+		expect(bridge.activeWorktreePath).toBeUndefined();
+		expect(bridge.activeWorktreeBranch).toBeUndefined();
+		expect(bridge.status).toBe('unknown');
+		expect(plugin.saveSettings).toHaveBeenCalled();
+	});
 });
 
 // ─── syncAll ──────────────────────────────────────────────────────────────────
@@ -419,6 +444,42 @@ describe('BridgeManager.syncAll', () => {
 
 		expect(Notice).toHaveBeenCalledWith('Vault Bridges: No bridges configured.');
 		expect(exec).not.toHaveBeenCalled();
+	});
+});
+
+// ─── gitPull — stale worktree self-heal ──────────────────────────────────────
+
+describe('BridgeManager.syncBridge — stale worktree self-heal', () => {
+	it('clears stale activeWorktreePath and syncs against real repoPath', async () => {
+		const plugin = makePlugin();
+		const manager = new BridgeManager(plugin);
+		const staleWorktreePath = '/private/var/folders/stale-worktree';
+		const bridge = makeBridge({
+			repoPath: '/repo/path',
+			activeWorktreePath: staleWorktreePath,
+			activeWorktreeBranch: 'claude/feature',
+		});
+		plugin.settings.bridges.push(bridge);
+
+		// The stale worktree does not exist; the real repo and its .git dir do.
+		vi.mocked(fs.existsSync).mockImplementation((p: any) => p !== staleWorktreePath);
+		vi.mocked(fs.lstatSync).mockReturnValue({ isSymbolicLink: () => false } as any);
+		vi.mocked(fs.statSync).mockReturnValue({ isDirectory: () => true, isFile: () => false, mtimeMs: 0 } as any);
+		vi.mocked(fs.readdirSync).mockReturnValue([]);
+
+		await manager.syncBridge(bridge, true);
+
+		// Stale fields must be cleared
+		expect(bridge.activeWorktreePath).toBeUndefined();
+		expect(bridge.activeWorktreeBranch).toBeUndefined();
+
+		// Sync must succeed against the real repoPath
+		expect(bridge.status).toBe('ok');
+		expect(plugin.saveSettings).toHaveBeenCalled();
+
+		// Confirm no git commands were attempted against the stale path
+		const execCalls = vi.mocked(exec).mock.calls.map(([cmd]: any[]) => cmd as string);
+		expect(execCalls.some(cmd => cmd.includes(staleWorktreePath))).toBe(false);
 	});
 });
 
