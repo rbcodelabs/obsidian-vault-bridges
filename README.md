@@ -264,7 +264,7 @@ When the [Claude Threads](https://github.com/rbcodelabs/obsidian-claude-threads)
 - When the session runs `exit_worktree`, the bridge snaps back to the main checkout — but only if it was pinned to the worktree that was removed; a bridge you manually pointed elsewhere stays put.
 - With multiple bridges configured, only bridges of the repo whose worktree changed flip. Other repos' bridges are untouched.
 - **How it works:** Claude Threads fires a `claude-threads:worktree-changed` workspace event after each successful worktree change; Vault Bridges listens and matches the event's repo path against each bridge (symlinks resolved). No file watching or polling — both plugins run in the same Obsidian process. Neither plugin requires the other: without a counterpart the event simply has no listener/emitter.
-- **Safety:** if the vault copy has unpushed edits, entering a worktree shows the normal dirty warning; exiting (when the worktree is already deleted and there's nothing left to push to) skips the flip with a warning instead of overwriting your edits.
+- **Safety:** if the vault copy or repo has uncommitted changes when entering a worktree, auto-flip carries them over automatically (stash → switch → stash-pop) instead of blocking on the dirty-warning dialog — there's no one to click it in a headless agent session. Exiting (when the worktree is already deleted and there's nothing left to stash to) skips the flip with a warning instead of overwriting your edits.
 - Vault Bridges also fires `vault-bridges:worktree-switched` after every switch (manual or automatic), so other plugins can keep their own state in sync.
 - Disable via **Settings → Vault Bridges → Auto-flip worktrees with Claude sessions**.
 
