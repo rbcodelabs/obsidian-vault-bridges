@@ -42,6 +42,8 @@ interface TestContext {
 	autoFlip: WorktreeAutoFlip;
 	switchWorktree: ReturnType<typeof vi.fn>;
 	checkDirty: ReturnType<typeof vi.fn>;
+	hasGitDirtyState: ReturnType<typeof vi.fn>;
+	stashAndSwitch: ReturnType<typeof vi.fn>;
 	workspaceOn: ReturnType<typeof vi.fn>;
 	registerEvent: ReturnType<typeof vi.fn>;
 }
@@ -49,17 +51,28 @@ interface TestContext {
 function makeContext(bridges: Bridge[], { autoFlipWorktrees = true } = {}): TestContext {
 	const switchWorktree = vi.fn().mockResolvedValue(undefined);
 	const checkDirty = vi.fn().mockReturnValue(false);
+	const hasGitDirtyState = vi.fn().mockResolvedValue(false);
+	const stashAndSwitch = vi.fn().mockResolvedValue(undefined);
 	const workspaceOn = vi.fn().mockReturnValue({ /* EventRef */ });
 	const registerEvent = vi.fn();
 
 	const plugin = {
 		app: { workspace: { on: workspaceOn } },
 		settings: { bridges, syncOnStartup: true, claudePath: '', claudeEnabled: false, autoFlipWorktrees },
-		bridgeManager: { switchWorktree, checkDirty },
+		bridgeManager: { switchWorktree, checkDirty, hasGitDirtyState, stashAndSwitch },
 		registerEvent,
 	} as unknown as VaultBridgesPlugin;
 
-	return { plugin, autoFlip: new WorktreeAutoFlip(plugin), switchWorktree, checkDirty, workspaceOn, registerEvent };
+	return {
+		plugin,
+		autoFlip: new WorktreeAutoFlip(plugin),
+		switchWorktree,
+		checkDirty,
+		hasGitDirtyState,
+		stashAndSwitch,
+		workspaceOn,
+		registerEvent,
+	};
 }
 
 function enterEvent(overrides: Partial<WorktreeChangeEvent> = {}): WorktreeChangeEvent {
@@ -152,6 +165,46 @@ describe('enter_worktree auto-flip', () => {
 		switchWorktree.mockRejectedValue(new Error('boom'));
 		await expect(autoFlip.handleWorktreeChange(enterEvent())).resolves.toBeUndefined();
 		expect(vi.mocked(Notice).mock.calls.some(([msg]) => String(msg).includes('boom'))).toBe(true);
+	});
+
+	// Regression coverage for the "Agentic PM Playbook" incident: switchWorktree's
+	// own dirty-check gate opens DirtyWarningModal and returns without setting
+	// activeWorktreePath/activeWorktreeBranch whenever the bridge is dirty — a
+	// modal a headless MCP caller can never click through. Auto-flip must resolve
+	// dirtiness itself and use the non-interactive stash/pop flow instead.
+	it('uses stashAndSwitch instead of switchWorktree when the vault copy is dirty on entry', async () => {
+		const bridge = makeBridge();
+		const { autoFlip, switchWorktree, stashAndSwitch, checkDirty } = makeContext([bridge]);
+		checkDirty.mockReturnValue(true);
+		await autoFlip.handleWorktreeChange(enterEvent());
+		expect(stashAndSwitch).toHaveBeenCalledWith(bridge, WT_PATH);
+		expect(switchWorktree).not.toHaveBeenCalled();
+	});
+
+	it('uses stashAndSwitch instead of switchWorktree when the repo itself has uncommitted changes on entry', async () => {
+		const bridge = makeBridge();
+		const { autoFlip, switchWorktree, stashAndSwitch, hasGitDirtyState } = makeContext([bridge]);
+		hasGitDirtyState.mockResolvedValue(true);
+		await autoFlip.handleWorktreeChange(enterEvent());
+		expect(stashAndSwitch).toHaveBeenCalledWith(bridge, WT_PATH);
+		expect(switchWorktree).not.toHaveBeenCalled();
+	});
+
+	it('still uses switchWorktree (no stash) when the bridge is clean', async () => {
+		const bridge = makeBridge();
+		const { autoFlip, switchWorktree, stashAndSwitch } = makeContext([bridge]);
+		await autoFlip.handleWorktreeChange(enterEvent());
+		expect(switchWorktree).toHaveBeenCalledWith(bridge, WT_PATH, false);
+		expect(stashAndSwitch).not.toHaveBeenCalled();
+	});
+
+	it('surfaces stashAndSwitch errors via Notice without throwing', async () => {
+		const bridge = makeBridge();
+		const { autoFlip, stashAndSwitch, checkDirty } = makeContext([bridge]);
+		checkDirty.mockReturnValue(true);
+		stashAndSwitch.mockRejectedValue(new Error('stash conflict'));
+		await expect(autoFlip.handleWorktreeChange(enterEvent())).resolves.toBeUndefined();
+		expect(vi.mocked(Notice).mock.calls.some(([msg]) => String(msg).includes('stash conflict'))).toBe(true);
 	});
 });
 

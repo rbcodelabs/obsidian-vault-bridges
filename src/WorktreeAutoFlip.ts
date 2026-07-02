@@ -108,19 +108,43 @@ export class WorktreeAutoFlip {
 				continue;
 			}
 
+			// Auto-flip must never require a human click. switchWorktree()'s own
+			// dirty-check gate (force=false) opens DirtyWarningModal and returns
+			// *without* touching activeWorktreePath/activeWorktreeBranch whenever
+			// the bridge has any vault or repo dirty state — and that Notice/modal
+			// is invisible to a headless MCP caller, so the flip appears to fail
+			// silently (this is exactly what broke the "Agentic PM Playbook"
+			// bridge: it's an actively-edited docs bridge, so it's often dirty at
+			// the moment a session calls enter_worktree). On the entry path (old
+			// worktree still present or none) resolve dirtiness ourselves and
+			// carry any pending changes across via the same stash/pop flow the
+			// modal's "Stash & Switch" button uses, instead of ever opening it.
+			const isDirty = !currentGone && (
+				this.plugin.bridgeManager.checkDirty(bridge) ||
+				await this.plugin.bridgeManager.hasGitDirtyState(bridge)
+			);
+
 			new Notice(
 				target
-					? `Vault Bridges: Claude session entered a worktree — flipping "${bridge.name}" to "${payload.branch ?? target}"…`
+					? `Vault Bridges: Claude session entered a worktree — flipping "${bridge.name}" to "${payload.branch ?? target}"${isDirty ? ' (carrying uncommitted changes)' : ''}…`
 					: `Vault Bridges: Claude session exited its worktree — flipping "${bridge.name}" back to main…`,
 				6000
 			);
 
 			try {
-				// force only when the old worktree no longer exists (the
-				// dirty-warning modal's "push then switch" would have nothing
-				// to push to). Otherwise keep the normal dirty-check flow so
-				// unpushed vault edits always get a confirmation modal.
-				await this.plugin.bridgeManager.switchWorktree(bridge, target, currentGone);
+				if (isDirty) {
+					// Non-interactive equivalent of DirtyWarningModal's
+					// "Stash & Switch": carries uncommitted vault/repo changes
+					// into the new checkout instead of blocking on a click that
+					// will never come from an agent session.
+					await this.plugin.bridgeManager.stashAndSwitch(bridge, target);
+				} else {
+					// force only when the old worktree no longer exists (the
+					// dirty-warning modal's "push then switch" would have nothing
+					// to push to). Otherwise the bridge is clean here, so
+					// switchWorktree's dirty-check gate is a no-op anyway.
+					await this.plugin.bridgeManager.switchWorktree(bridge, target, currentGone);
+				}
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
 				console.error(`Vault Bridges: auto-flip failed for "${bridge.name}":`, err);
